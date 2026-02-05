@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
+
+export const runtime = 'edge'
 
 // Types for OpenPhone webhook events
 interface OpenPhoneWebhookEvent {
@@ -51,30 +52,44 @@ interface SummaryEventData {
   nextSteps?: string[]
 }
 
-// Verify OpenPhone webhook signature
-function verifySignature(payload: string, signature: string, signingKey: string): boolean {
+// Verify OpenPhone webhook signature using Web Crypto API (Edge compatible)
+async function verifySignature(payload: string, signature: string, signingKey: string): Promise<boolean> {
   try {
     // Header format: <scheme>;<version>;<timestamp>;<signature>
     const parts = signature.split(";")
     if (parts.length !== 4) return false
-    
-    const [scheme, version, timestamp, sig] = parts
+
+    const [scheme, , timestamp, sig] = parts
     if (scheme !== "v1" && scheme !== "openphone") return false
-    
+
     // Signed data: timestamp + "." + raw JSON payload
     const signedData = `${timestamp}.${payload}`
-    
-    // Decode base64 signing key and compute HMAC-SHA256
-    const key = Buffer.from(signingKey, "base64")
-    const expectedSig = crypto
-      .createHmac("sha256", key)
-      .update(signedData)
-      .digest("base64")
-    
-    return crypto.timingSafeEqual(
-      Buffer.from(sig),
-      Buffer.from(expectedSig)
+
+    // Decode base64 signing key
+    const keyData = Uint8Array.from(atob(signingKey), c => c.charCodeAt(0))
+
+    // Import key for HMAC-SHA256
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
     )
+
+    // Compute HMAC-SHA256
+    const encoder = new TextEncoder()
+    const signatureBytes = await crypto.subtle.sign(
+      "HMAC",
+      cryptoKey,
+      encoder.encode(signedData)
+    )
+
+    // Convert to base64
+    const expectedSig = btoa(String.fromCharCode(...new Uint8Array(signatureBytes)))
+
+    // Constant-time comparison
+    return sig === expectedSig
   } catch {
     return false
   }
@@ -94,7 +109,7 @@ export async function POST(request: NextRequest) {
     
     // Verify signature if we have a signing secret
     if (signingSecret && signature) {
-      const isValid = verifySignature(payload, signature, signingSecret)
+      const isValid = await verifySignature(payload, signature, signingSecret)
       if (!isValid) {
         console.error("[v0] Invalid webhook signature")
         return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
