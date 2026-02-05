@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useMemo, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
+import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -109,6 +110,7 @@ const getOutcomeColor = (outcome: AttemptOutcome) => {
 const validObjectiveVerbs = ["Confirm", "Disqualify", "Book", "Identify", "Test"]
 
 export default function LeadsPage() {
+  const { toast } = useToast()
   const [leads, setLeads] = useState<Lead[]>([])
   const [attempts, setAttempts] = useState<Attempt[]>([])
 
@@ -119,10 +121,19 @@ export default function LeadsPage() {
       const supabase = getSupabase()
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
-        .select('*, contacts(*)')
+        .select('*')
         .order('created_at', { ascending: false })
       
       console.log("[LeadsPage] Fetch result:", { leadsData, leadsError, count: leadsData?.length })
+
+      if (leadsError) {
+        console.error("Fetch error:", leadsError)
+        toast({
+          variant: "destructive",
+          title: "Failed to load leads",
+          description: leadsError.message
+        })
+      }
 
       if (leadsData) {
         const mappedLeads: Lead[] = leadsData.map((l: any) => ({
@@ -261,13 +272,21 @@ export default function LeadsPage() {
     }]).select().single()
 
     console.log("[LeadsPage] Insert response:", { data, error })
-    if (error) console.error("[LeadsPage] Lead add failed")
-    else console.log("[LeadsPage] Lead added successfully")
-
+    
     if (error) {
         console.error("Error adding lead:", error)
+        toast({
+          variant: "destructive",
+          title: "Failed to add lead",
+          description: error.message
+        })
         return
     }
+
+    toast({
+      title: "Lead added",
+      description: `${newLead.company} has been saved.`
+    })
 
     if (data) {
         const lead: Lead = {
