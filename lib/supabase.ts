@@ -12,6 +12,7 @@ export function getSupabase(): SupabaseClient {
     throw new Error('Supabase environment variables are not set')
   }
   
+  console.log("[Supabase] Initializing client:", supabaseUrl)
   supabase = createClient(supabaseUrl, supabaseAnonKey)
   return supabase
 }

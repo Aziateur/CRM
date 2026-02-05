@@ -115,12 +115,15 @@ export default function LeadsPage() {
   useEffect(() => {
     const fetchData = async () => {
       // Fetch leads
+      console.log("[LeadsPage] Fetching leads from Supabase...")
       const supabase = getSupabase()
-      const { data: leadsData } = await supabase
+      const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
         .select('*, contacts(*)')
         .order('created_at', { ascending: false })
       
+      console.log("[LeadsPage] Fetch result:", { leadsData, leadsError, count: leadsData?.length })
+
       if (leadsData) {
         const mappedLeads: Lead[] = leadsData.map((l: any) => ({
           id: l.id,
@@ -249,12 +252,17 @@ export default function LeadsPage() {
   const handleAddLead = async () => {
     if (!newLead.company) return
 
+    console.log("[LeadsPage] Attempting to add lead:", newLead)
     const supabase = getSupabase()
     const { data, error } = await supabase.from('leads').insert([{
       company: newLead.company,
       phone: newLead.phone || null,
       segment: newLead.segment,
     }]).select().single()
+
+    console.log("[LeadsPage] Insert response:", { data, error })
+    if (error) console.error("[LeadsPage] Lead add failed")
+    else console.log("[LeadsPage] Lead added successfully")
 
     if (error) {
         console.error("Error adding lead:", error)
