@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -77,6 +77,14 @@ import {
   type ContactRole,
   type ConstraintOption,
 } from "@/lib/store"
+import {
+  fetchLeads,
+  fetchAttempts,
+  createLead,
+  updateLead,
+  createAttempt,
+  isSupabaseConfigured,
+} from "@/lib/db"
 
 // Helper to format time since
 function timeSince(timestamp: string): string {
@@ -107,8 +115,42 @@ const getOutcomeColor = (outcome: AttemptOutcome) => {
 const validObjectiveVerbs = ["Confirm", "Disqualify", "Book", "Identify", "Test"]
 
 export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>(initialLeads)
-  const [attempts, setAttempts] = useState<Attempt[]>(initialAttempts)
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [attempts, setAttempts] = useState<Attempt[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [dbConnected, setDbConnected] = useState(false)
+
+  // Fetch data from Supabase on mount
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true)
+
+      if (isSupabaseConfigured()) {
+        const [dbLeads, dbAttempts] = await Promise.all([
+          fetchLeads(),
+          fetchAttempts(),
+        ])
+
+        if (dbLeads.length > 0 || dbAttempts.length > 0) {
+          setLeads(dbLeads)
+          setAttempts(dbAttempts)
+          setDbConnected(true)
+        } else {
+          // Fall back to sample data if database is empty or not configured
+          setLeads(initialLeads)
+          setAttempts(initialAttempts)
+        }
+      } else {
+        // Fall back to sample data if Supabase is not configured
+        setLeads(initialLeads)
+        setAttempts(initialAttempts)
+      }
+
+      setIsLoading(false)
+    }
+
+    loadData()
+  }, [])
   
   // Filters
   const [segmentFilter, setSegmentFilter] = useState<string>("all")
@@ -172,7 +214,7 @@ export default function LeadsPage() {
     return matchesSegment && matchesOutcome && matchesSearch
   })
 
-  const handleAddLead = () => {
+  const handleAddLead = async () => {
     if (!newLead.company) return
 
     const lead: Lead = {
@@ -186,7 +228,19 @@ export default function LeadsPage() {
       createdAt: new Date().toISOString().split("T")[0],
     }
 
-    setLeads([lead, ...leads])
+    // Save to Supabase if configured
+    if (isSupabaseConfigured()) {
+      const savedLead = await createLead(lead)
+      if (savedLead) {
+        setLeads([savedLead, ...leads])
+      } else {
+        // Fallback to local state if save fails
+        setLeads([lead, ...leads])
+      }
+    } else {
+      setLeads([lead, ...leads])
+    }
+
     setNewLead({ company: "", phone: "", segment: "Unknown" })
     setIsAddLeadOpen(false)
   }
@@ -206,16 +260,31 @@ export default function LeadsPage() {
 
   const lastAttempt = selectedLeadAttempts[0] || null
 
-  const handleSaveLead = () => {
+  const handleSaveLead = async () => {
     if (!editedLead) return
-    setLeads(leads.map(l => l.id === editedLead.id ? editedLead : l))
-    setSelectedLead(editedLead)
+
+    // Save to Supabase if configured
+    if (isSupabaseConfigured()) {
+      const savedLead = await updateLead(editedLead)
+      if (savedLead) {
+        setLeads(leads.map(l => l.id === savedLead.id ? savedLead : l))
+        setSelectedLead(savedLead)
+      } else {
+        // Fallback to local state if save fails
+        setLeads(leads.map(l => l.id === editedLead.id ? editedLead : l))
+        setSelectedLead(editedLead)
+      }
+    } else {
+      setLeads(leads.map(l => l.id === editedLead.id ? editedLead : l))
+      setSelectedLead(editedLead)
+    }
+
     setIsEditingLead(false)
   }
 
-  const handleLogAttempt = () => {
+  const handleLogAttempt = async () => {
     if (!selectedLead || !newAttempt.outcome) return
-    
+
     const attempt: Attempt = {
       id: `att-${Date.now()}`,
       leadId: selectedLead.id,
@@ -229,8 +298,20 @@ export default function LeadsPage() {
       durationSec: 0,
       createdAt: new Date().toISOString().split("T")[0],
     }
-    
-    setAttempts([attempt, ...attempts])
+
+    // Save to Supabase if configured
+    if (isSupabaseConfigured()) {
+      const savedAttempt = await createAttempt(attempt)
+      if (savedAttempt) {
+        setAttempts([savedAttempt, ...attempts])
+      } else {
+        // Fallback to local state if save fails
+        setAttempts([attempt, ...attempts])
+      }
+    } else {
+      setAttempts([attempt, ...attempts])
+    }
+
     setNewAttempt({ outcome: null, why: null, repMistake: null, note: "" })
     setIsLogAttemptOpen(false)
   }
@@ -407,6 +488,18 @@ export default function LeadsPage() {
         />
 
         <div className="flex-1 p-6">
+          {/* Database connection status */}
+          {!isLoading && !dbConnected && isSupabaseConfigured() && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
+              Database is empty. Using sample data. Add leads to persist them to Supabase.
+            </div>
+          )}
+          {!isLoading && !isSupabaseConfigured() && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800">
+              Supabase not configured. Data will not persist after refresh. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local
+            </div>
+          )}
+
           {/* Minimal Filters */}
           <div className="flex flex-wrap gap-3 mb-6">
             <Select value={segmentFilter} onValueChange={setSegmentFilter}>
@@ -435,6 +528,11 @@ export default function LeadsPage() {
           </div>
 
           {/* Lead Table */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              Loading leads...
+            </div>
+          ) : (
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -492,9 +590,10 @@ export default function LeadsPage() {
               </TableBody>
             </Table>
           </div>
+          )}
 
           <p className="text-sm text-muted-foreground mt-4">
-            Showing {filteredLeads.length} of {leads.length} leads
+            {isLoading ? "Loading..." : `Showing ${filteredLeads.length} of ${leads.length} leads`}
           </p>
         </div>
 

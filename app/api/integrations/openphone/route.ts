@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const runtime = 'edge'
+
 const OPENPHONE_API_BASE = "https://api.openphone.com/v1"
 
 // Test API key by calling a lightweight endpoint
