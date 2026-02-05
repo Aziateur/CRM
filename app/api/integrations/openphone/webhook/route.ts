@@ -1,6 +1,7 @@
 export const runtime = 'edge';
-import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
+import crypto from "node:crypto";
+import { Buffer } from "node:buffer";
+import { NextRequest, NextResponse } from "next/server";
 
 // Types for OpenPhone webhook events
 interface OpenPhoneWebhookEvent {
