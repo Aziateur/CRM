@@ -426,7 +426,7 @@ export default function LeadsPage() {
     })
   }
 
-  const handleAddToAccountReality = () => {
+  const handleAddToAccountReality = async () => {
     if (!editedLead || !newFactOrQuestion.trim()) return
     
     if (addToType === "fact") {
