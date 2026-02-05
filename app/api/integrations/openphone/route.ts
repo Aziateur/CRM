@@ -1,3 +1,4 @@
+export const runtime = 'edge';
 import { NextRequest, NextResponse } from "next/server"
 
 const OPENPHONE_API_BASE = "https://api.openphone.com/v1"
