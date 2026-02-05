@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { supabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -50,8 +51,42 @@ import {
 } from "@/lib/store"
 
 export default function PlaybookPage() {
-  const [rules, setRules] = useState<Rule[]>(initialRules)
-  const [stopSignals, setStopSignals] = useState<StopSignal[]>(initialStopSignals)
+  const [rules, setRules] = useState<Rule[]>([])
+  const [stopSignals, setStopSignals] = useState<StopSignal[]>([])
+
+  useEffect(() => {
+    const fetchData = async () => {
+        const { data: rulesData } = await supabase.from('rules').select('*')
+        if (rulesData) {
+            setRules(rulesData.map((r: any) => ({
+                id: r.id,
+                ifWhen: r.if_when || r.ifWhen,
+                then: r.then_action || r.then, // Assuming snake_case 'then' might be reserved or something, but 'then' is likely fine.
+                because: r.because,
+                confidence: r.confidence,
+                evidenceAttemptIds: r.evidence_attempt_ids || [],
+                isActive: r.is_active,
+                createdAt: r.created_at
+            })))
+        }
+
+        const { data: signalsData } = await supabase.from('stop_signals').select('*')
+        if (signalsData) {
+            setStopSignals(signalsData.map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                description: s.description,
+                triggerCondition: s.trigger_condition || s.triggerCondition,
+                threshold: s.threshold,
+                windowSize: s.window_size || s.windowSize,
+                recommendedDrillId: s.recommended_drill_id || s.recommendedDrillId,
+                isActive: s.is_active
+            })))
+        }
+    }
+    fetchData()
+  }, [])
+
 
   // Add Rule dialog
   const [isAddRuleOpen, setIsAddRuleOpen] = useState(false)
@@ -87,23 +122,33 @@ export default function PlaybookPage() {
   }
 
   // Handlers
-  const handleAddRule = () => {
+  const handleAddRule = async () => {
     if (!newRule.ifWhen || !newRule.then) return
 
-    const rule: Rule = {
-      id: `rule-${Date.now()}`,
-      ifWhen: newRule.ifWhen,
-      then: newRule.then,
-      because: newRule.because,
-      confidence: newRule.confidence,
-      evidenceAttemptIds: [],
-      isActive: newRule.isActive,
-      createdAt: new Date().toISOString().split("T")[0],
-    }
+    const { data, error } = await supabase.from('rules').insert([{
+        if_when: newRule.ifWhen,
+        then: newRule.then,
+        because: newRule.because,
+        confidence: newRule.confidence,
+        is_active: newRule.isActive
+    }]).select().single()
 
-    setRules([rule, ...rules])
-    setNewRule({ ifWhen: "", then: "", because: "", confidence: "Low", isActive: false })
-    setIsAddRuleOpen(false)
+    if (data) {
+        const rule: Rule = {
+          id: data.id,
+          ifWhen: data.if_when,
+          then: data.then,
+          because: data.because,
+          confidence: data.confidence,
+          evidenceAttemptIds: [],
+          isActive: data.is_active,
+          createdAt: data.created_at,
+        }
+
+        setRules([rule, ...rules])
+        setNewRule({ ifWhen: "", then: "", because: "", confidence: "Low", isActive: false })
+        setIsAddRuleOpen(false)
+    }
   }
 
   const handleEditRule = (rule: Rule) => {
@@ -111,19 +156,32 @@ export default function PlaybookPage() {
     setIsEditRuleOpen(true)
   }
 
-  const handleSaveEditRule = () => {
+  const handleSaveEditRule = async () => {
     if (!editingRule) return
+
+    await supabase.from('rules').update({
+        if_when: editingRule.ifWhen,
+        then: editingRule.then,
+        because: editingRule.because,
+        confidence: editingRule.confidence
+    }).eq('id', editingRule.id)
 
     setRules(rules.map((r) => (r.id === editingRule.id ? editingRule : r)))
     setEditingRule(null)
     setIsEditRuleOpen(false)
   }
 
-  const handleDeleteRule = (ruleId: string) => {
+  const handleDeleteRule = async (ruleId: string) => {
+    await supabase.from('rules').delete().eq('id', ruleId)
     setRules(rules.filter((r) => r.id !== ruleId))
   }
 
-  const handleToggleRuleActive = (ruleId: string) => {
+  const handleToggleRuleActive = async (ruleId: string) => {
+    const rule = rules.find(r => r.id === ruleId)
+    if (!rule) return
+
+    await supabase.from('rules').update({ is_active: !rule.isActive }).eq('id', ruleId)
+
     setRules(
       rules.map((r) =>
         r.id === ruleId ? { ...r, isActive: !r.isActive } : r
@@ -132,7 +190,12 @@ export default function PlaybookPage() {
   }
 
   // Stop Signal handlers
-  const handleToggleSignalActive = (signalId: string) => {
+  const handleToggleSignalActive = async (signalId: string) => {
+    const signal = stopSignals.find(s => s.id === signalId)
+    if (!signal) return
+
+    await supabase.from('stop_signals').update({ is_active: !signal.isActive }).eq('id', signalId)
+
     setStopSignals(
       stopSignals.map((s) =>
         s.id === signalId ? { ...s, isActive: !s.isActive } : s
@@ -145,8 +208,17 @@ export default function PlaybookPage() {
     setIsEditSignalOpen(true)
   }
 
-  const handleSaveEditSignal = () => {
+  const handleSaveEditSignal = async () => {
     if (!editingSignal) return
+    
+    await supabase.from('stop_signals').update({
+        name: editingSignal.name,
+        description: editingSignal.description,
+        threshold: editingSignal.threshold,
+        window_size: editingSignal.windowSize,
+        recommended_drill_id: editingSignal.recommendedDrillId
+    }).eq('id', editingSignal.id)
+
     setStopSignals(stopSignals.map((s) => (s.id === editingSignal.id ? editingSignal : s)))
     setEditingSignal(null)
     setIsEditSignalOpen(false)

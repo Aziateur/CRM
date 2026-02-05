@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
+import { supabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -107,8 +108,79 @@ const getOutcomeColor = (outcome: AttemptOutcome) => {
 const validObjectiveVerbs = ["Confirm", "Disqualify", "Book", "Identify", "Test"]
 
 export default function LeadsPage() {
-  const [leads, setLeads] = useState<Lead[]>(initialLeads)
-  const [attempts, setAttempts] = useState<Attempt[]>(initialAttempts)
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [attempts, setAttempts] = useState<Attempt[]>([])
+
+  useEffect(() => {
+    const fetchData = async () => {
+      // Fetch leads
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('*, contacts(*)')
+        .order('created_at', { ascending: false })
+      
+      if (leadsData) {
+        const mappedLeads: Lead[] = leadsData.map((l: any) => ({
+          id: l.id,
+          company: l.company,
+          phone: l.phone,
+          segment: l.segment || "Unknown",
+          isDecisionMaker: l.is_decision_maker || l.isDecisionMaker || "unknown",
+          isFleetOwner: l.is_fleet_owner || l.isFleetOwner || "unknown",
+          confirmedFacts: l.confirmed_facts || l.confirmedFacts || [],
+          openQuestions: l.open_questions || l.openQuestions || [],
+          nextCallObjective: l.next_call_objective || l.nextCallObjective,
+          operationalContext: l.operational_context || l.operationalContext,
+          constraints: l.constraints || [],
+          constraintOther: l.constraint_other || l.constraintOther,
+          opportunityAngle: l.opportunity_angle || l.opportunityAngle,
+          website: l.website,
+          email: l.email,
+          address: l.address,
+          leadSource: l.lead_source || l.leadSource,
+          contacts: (l.contacts || []).map((c: any) => ({
+             id: c.id,
+             name: c.name,
+             role: c.role || "Other",
+             phone: c.phone,
+             email: c.email
+          })),
+          createdAt: l.created_at || l.createdAt || new Date().toISOString()
+        }))
+        setLeads(mappedLeads)
+      }
+
+      // Fetch attempts
+      const { data: attemptsData } = await supabase
+        .from('attempts')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (attemptsData) {
+         const mappedAttempts: Attempt[] = attemptsData.map((a: any) => ({
+            id: a.id,
+            leadId: a.lead_id || a.leadId,
+            contactId: a.contact_id || a.contactId,
+            timestamp: a.timestamp,
+            outcome: a.outcome,
+            why: a.why,
+            repMistake: a.rep_mistake || a.repMistake,
+            dmReached: a.dm_reached || a.dmReached,
+            nextAction: a.next_action || a.nextAction,
+            nextActionAt: a.next_action_at || a.nextActionAt,
+            note: a.note,
+            durationSec: a.duration_sec || a.durationSec || 0,
+            experimentTag: a.experiment_tag || a.experimentTag,
+            sessionId: a.session_id || a.sessionId,
+            createdAt: a.created_at || a.createdAt || new Date().toISOString(),
+            recordingUrl: a.recording_url,
+            transcript: a.transcript
+         }))
+         setAttempts(mappedAttempts)
+      }
+    }
+    fetchData()
+  }, [])
   
   // Filters
   const [segmentFilter, setSegmentFilter] = useState<string>("all")
@@ -172,23 +244,36 @@ export default function LeadsPage() {
     return matchesSegment && matchesOutcome && matchesSearch
   })
 
-  const handleAddLead = () => {
+  const handleAddLead = async () => {
     if (!newLead.company) return
 
-    const lead: Lead = {
-      id: `lead-${Date.now()}`,
+    const { data, error } = await supabase.from('leads').insert([{
       company: newLead.company,
-      phone: newLead.phone || undefined,
+      phone: newLead.phone || null,
       segment: newLead.segment,
-      isDecisionMaker: "unknown",
-      isFleetOwner: "unknown",
-      contacts: [],
-      createdAt: new Date().toISOString().split("T")[0],
+    }]).select().single()
+
+    if (error) {
+        console.error("Error adding lead:", error)
+        return
     }
 
-    setLeads([lead, ...leads])
-    setNewLead({ company: "", phone: "", segment: "Unknown" })
-    setIsAddLeadOpen(false)
+    if (data) {
+        const lead: Lead = {
+          id: data.id,
+          company: data.company,
+          phone: data.phone,
+          segment: data.segment,
+          isDecisionMaker: "unknown",
+          isFleetOwner: "unknown",
+          contacts: [],
+          createdAt: data.created_at,
+        }
+
+        setLeads([lead, ...leads])
+        setNewLead({ company: "", phone: "", segment: "Unknown" })
+        setIsAddLeadOpen(false)
+    }
   }
 
   const openLeadDrawer = (lead: typeof leadsWithDerived[0]) => {
@@ -206,59 +291,128 @@ export default function LeadsPage() {
 
   const lastAttempt = selectedLeadAttempts[0] || null
 
-  const handleSaveLead = () => {
+  const handleSaveLead = async () => {
     if (!editedLead) return
+
+    const { error } = await supabase.from('leads').update({
+        company: editedLead.company,
+        phone: editedLead.phone,
+        segment: editedLead.segment,
+        is_decision_maker: editedLead.isDecisionMaker,
+        is_fleet_owner: editedLead.isFleetOwner,
+        operational_context: editedLead.operationalContext,
+        confirmed_facts: editedLead.confirmedFacts,
+        open_questions: editedLead.openQuestions,
+        next_call_objective: editedLead.nextCallObjective,
+        constraints: editedLead.constraints,
+        constraint_other: editedLead.constraintOther,
+        opportunity_angle: editedLead.opportunityAngle,
+        website: editedLead.website,
+        email: editedLead.email,
+        address: editedLead.address,
+        lead_source: editedLead.leadSource
+    }).eq('id', editedLead.id)
+
+    if (error) {
+        console.error("Error updating lead:", error)
+        return
+    }
+
     setLeads(leads.map(l => l.id === editedLead.id ? editedLead : l))
     setSelectedLead(editedLead)
     setIsEditingLead(false)
   }
 
-  const handleLogAttempt = () => {
+  const handleLogAttempt = async () => {
     if (!selectedLead || !newAttempt.outcome) return
     
-    const attempt: Attempt = {
-      id: `att-${Date.now()}`,
-      leadId: selectedLead.id,
+    const attemptData = {
+      lead_id: selectedLead.id,
       timestamp: new Date().toISOString(),
       outcome: newAttempt.outcome,
-      why: newAttempt.why || undefined,
-      repMistake: newAttempt.repMistake || undefined,
-      dmReached: isDmReached(newAttempt.outcome),
-      nextAction: getDefaultNextAction(newAttempt.outcome, newAttempt.why || undefined),
-      note: newAttempt.note || undefined,
-      durationSec: 0,
-      createdAt: new Date().toISOString().split("T")[0],
+      why: newAttempt.why || null,
+      rep_mistake: newAttempt.repMistake || null,
+      dm_reached: isDmReached(newAttempt.outcome),
+      next_action: getDefaultNextAction(newAttempt.outcome, newAttempt.why || undefined),
+      note: newAttempt.note || null,
+      duration_sec: 0,
     }
+
+    const { data, error } = await supabase.from('attempts').insert([attemptData]).select().single()
     
-    setAttempts([attempt, ...attempts])
-    setNewAttempt({ outcome: null, why: null, repMistake: null, note: "" })
-    setIsLogAttemptOpen(false)
+    if (error) {
+        console.error("Error logging attempt:", error)
+        return
+    }
+
+    if (data) {
+        const attempt: Attempt = {
+           id: data.id,
+           leadId: data.lead_id,
+           timestamp: data.timestamp,
+           outcome: data.outcome,
+           why: data.why,
+           repMistake: data.rep_mistake,
+           dmReached: data.dm_reached,
+           nextAction: data.next_action,
+           note: data.note,
+           durationSec: data.duration_sec,
+           createdAt: data.created_at
+        }
+    
+        setAttempts([attempt, ...attempts])
+        setNewAttempt({ outcome: null, why: null, repMistake: null, note: "" })
+        setIsLogAttemptOpen(false)
+    }
   }
 
-  const handleAddContact = () => {
+  const handleAddContact = async () => {
     if (!editedLead || !newContact.name) return
     
-    const contact: Contact = {
-      id: `c-${Date.now()}`,
-      name: newContact.name,
-      phone: newContact.phone || undefined,
-      role: newContact.role,
-    }
+    const { data, error } = await supabase.from('contacts').insert([{
+        lead_id: editedLead.id,
+        name: newContact.name,
+        phone: newContact.phone || null,
+        role: newContact.role
+    }]).select().single()
+
+    if (data) {
+        const contact: Contact = {
+            id: data.id,
+            name: data.name,
+            phone: data.phone,
+            role: data.role
+        }
     
-    setEditedLead({
-      ...editedLead,
-      contacts: [...editedLead.contacts, contact]
-    })
-    setNewContact({ name: "", phone: "", role: "Other" })
-    setIsAddContactOpen(false)
+        setEditedLead({
+          ...editedLead,
+          contacts: [...editedLead.contacts, contact]
+        })
+        
+        // Also update leads list
+        setLeads(leads.map(l => l.id === editedLead.id ? { ...l, contacts: [...l.contacts, contact] } : l))
+
+        setNewContact({ name: "", phone: "", role: "Other" })
+        setIsAddContactOpen(false)
+    }
   }
 
-  const handleDeleteContact = (contactId: string) => {
+  const handleDeleteContact = async (contactId: string) => {
     if (!editedLead) return
-    setEditedLead({
+    
+    const { error } = await supabase.from('contacts').delete().eq('id', contactId)
+    
+    if (error) {
+        console.error("Error deleting contact:", error)
+        return
+    }
+
+    const updatedLead = {
       ...editedLead,
       contacts: editedLead.contacts.filter(c => c.id !== contactId)
-    })
+    }
+    setEditedLead(updatedLead)
+    setLeads(leads.map(l => l.id === editedLead.id ? updatedLead : l))
   }
 
   const handleSetPrimaryContact = (contactId: string) => {
@@ -299,9 +453,17 @@ export default function LeadsPage() {
       const updatedLead = addToType === "fact" 
         ? { ...editedLead, confirmedFacts: [...(editedLead.confirmedFacts || []), newFactOrQuestion.slice(0, 120)] }
         : { ...editedLead, openQuestions: [...(editedLead.openQuestions || []), newFactOrQuestion.slice(0, 120)] }
-      setLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l))
-      setSelectedLead(updatedLead)
-      setEditedLead(updatedLead)
+      
+      const { error } = await supabase.from('leads').update({
+        confirmed_facts: updatedLead.confirmedFacts,
+        open_questions: updatedLead.openQuestions
+      }).eq('id', updatedLead.id)
+      
+      if (!error) {
+          setLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l))
+          setSelectedLead(updatedLead)
+          setEditedLead(updatedLead)
+      }
     }
   }
 
