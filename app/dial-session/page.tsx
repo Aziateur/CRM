@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -94,6 +94,7 @@ export default function DialSessionPage() {
   useEffect(() => {
     const fetchData = async () => {
       // Fetch leads
+      const supabase = getSupabase()
       const { data: leadsData } = await supabase
         .from('leads')
         .select('*, contacts(*)')
@@ -131,6 +132,7 @@ export default function DialSessionPage() {
       }
 
       // Fetch attempts
+      const supabase = getSupabase()
       const { data: attemptsData } = await supabase
         .from('attempts')
         .select('*')
@@ -357,6 +359,7 @@ export default function DialSessionPage() {
       duration_sec: callDuration,
     }
 
+    const supabase = getSupabase()
     const { data, error } = await supabase.from('attempts').insert([attemptData]).select().single()
 
     if (error) {

@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from "react"
-import { supabase } from "@/lib/supabase"
+import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +57,7 @@ export default function PlaybookPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+        const supabase = getSupabase()
         const { data: rulesData } = await supabase.from('rules').select('*')
         if (rulesData) {
             setRules(rulesData.map((r: any) => ({
@@ -71,6 +72,7 @@ export default function PlaybookPage() {
             })))
         }
 
+        const supabase = getSupabase()
         const { data: signalsData } = await supabase.from('stop_signals').select('*')
         if (signalsData) {
             setStopSignals(signalsData.map((s: any) => ({
@@ -126,6 +128,7 @@ export default function PlaybookPage() {
   const handleAddRule = async () => {
     if (!newRule.ifWhen || !newRule.then) return
 
+    const supabase = getSupabase()
     const { data, error } = await supabase.from('rules').insert([{
         if_when: newRule.ifWhen,
         then: newRule.then,
@@ -160,6 +163,7 @@ export default function PlaybookPage() {
   const handleSaveEditRule = async () => {
     if (!editingRule) return
 
+    const supabase = getSupabase()
     await supabase.from('rules').update({
         if_when: editingRule.ifWhen,
         then: editingRule.then,
@@ -173,6 +177,7 @@ export default function PlaybookPage() {
   }
 
   const handleDeleteRule = async (ruleId: string) => {
+    const supabase = getSupabase()
     await supabase.from('rules').delete().eq('id', ruleId)
     setRules(rules.filter((r) => r.id !== ruleId))
   }
@@ -181,6 +186,7 @@ export default function PlaybookPage() {
     const rule = rules.find(r => r.id === ruleId)
     if (!rule) return
 
+    const supabase = getSupabase()
     await supabase.from('rules').update({ is_active: !rule.isActive }).eq('id', ruleId)
 
     setRules(
@@ -195,6 +201,7 @@ export default function PlaybookPage() {
     const signal = stopSignals.find(s => s.id === signalId)
     if (!signal) return
 
+    const supabase = getSupabase()
     await supabase.from('stop_signals').update({ is_active: !signal.isActive }).eq('id', signalId)
 
     setStopSignals(
@@ -212,6 +219,7 @@ export default function PlaybookPage() {
   const handleSaveEditSignal = async () => {
     if (!editingSignal) return
     
+    const supabase = getSupabase()
     await supabase.from('stop_signals').update({
         name: editingSignal.name,
         description: editingSignal.description,

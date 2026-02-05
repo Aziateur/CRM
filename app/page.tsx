@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useMemo, useEffect } from "react"
-import { supabase } from "@/lib/supabase"
+import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -115,6 +115,7 @@ export default function LeadsPage() {
   useEffect(() => {
     const fetchData = async () => {
       // Fetch leads
+      const supabase = getSupabase()
       const { data: leadsData } = await supabase
         .from('leads')
         .select('*, contacts(*)')
@@ -152,6 +153,7 @@ export default function LeadsPage() {
       }
 
       // Fetch attempts
+      const supabase = getSupabase()
       const { data: attemptsData } = await supabase
         .from('attempts')
         .select('*')
@@ -248,6 +250,7 @@ export default function LeadsPage() {
   const handleAddLead = async () => {
     if (!newLead.company) return
 
+    const supabase = getSupabase()
     const { data, error } = await supabase.from('leads').insert([{
       company: newLead.company,
       phone: newLead.phone || null,
@@ -295,6 +298,7 @@ export default function LeadsPage() {
   const handleSaveLead = async () => {
     if (!editedLead) return
 
+    const supabase = getSupabase()
     const { error } = await supabase.from('leads').update({
         company: editedLead.company,
         phone: editedLead.phone,
@@ -339,6 +343,7 @@ export default function LeadsPage() {
       duration_sec: 0,
     }
 
+    const supabase = getSupabase()
     const { data, error } = await supabase.from('attempts').insert([attemptData]).select().single()
     
     if (error) {
@@ -370,6 +375,7 @@ export default function LeadsPage() {
   const handleAddContact = async () => {
     if (!editedLead || !newContact.name) return
     
+    const supabase = getSupabase()
     const { data, error } = await supabase.from('contacts').insert([{
         lead_id: editedLead.id,
         name: newContact.name,
@@ -401,6 +407,7 @@ export default function LeadsPage() {
   const handleDeleteContact = async (contactId: string) => {
     if (!editedLead) return
     
+    const supabase = getSupabase()
     const { error } = await supabase.from('contacts').delete().eq('id', contactId)
     
     if (error) {
@@ -455,6 +462,7 @@ export default function LeadsPage() {
         ? { ...editedLead, confirmedFacts: [...(editedLead.confirmedFacts || []), newFactOrQuestion.slice(0, 120)] }
         : { ...editedLead, openQuestions: [...(editedLead.openQuestions || []), newFactOrQuestion.slice(0, 120)] }
       
+      const supabase = getSupabase()
       const { error } = await supabase.from('leads').update({
         confirmed_facts: updatedLead.confirmedFacts,
         open_questions: updatedLead.openQuestions

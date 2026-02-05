@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -110,6 +110,7 @@ export default function BatchReviewPage() {
   useEffect(() => {
     const fetchData = async () => {
       // Fetch attempts
+      const supabase = getSupabase()
       const { data: attemptsData } = await supabase
         .from('attempts')
         .select('*')
@@ -136,6 +137,7 @@ export default function BatchReviewPage() {
       }
 
       // Fetch leads
+      const supabase = getSupabase()
       const { data: leadsData } = await supabase.from('leads').select('*')
       if (leadsData) {
           const mappedLeads: Lead[] = leadsData.map((l: any) => ({
@@ -152,6 +154,7 @@ export default function BatchReviewPage() {
       }
       
       // Fetch experiments
+      const supabase = getSupabase()
       const { data: expData } = await supabase.from('experiments').select('*')
       if (expData) {
           setExperiments(expData)
