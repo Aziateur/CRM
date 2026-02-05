@@ -72,7 +72,6 @@ export default function PlaybookPage() {
             })))
         }
 
-        const supabase = getSupabase()
         const { data: signalsData } = await supabase.from('stop_signals').select('*')
         if (signalsData) {
             setStopSignals(signalsData.map((s: any) => ({

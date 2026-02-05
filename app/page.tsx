@@ -153,7 +153,6 @@ export default function LeadsPage() {
       }
 
       // Fetch attempts
-      const supabase = getSupabase()
       const { data: attemptsData } = await supabase
         .from('attempts')
         .select('*')
