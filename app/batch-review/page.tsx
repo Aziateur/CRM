@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -99,6 +100,65 @@ export default function BatchReviewPage() {
   const [proposedRules, setProposedRules] = useState<{ ifWhen: string; then: string; because: string; confidence: RuleConfidence }[]>([])
   const [selectedDrill, setSelectedDrill] = useState<string>("")
   const [drillDuration, setDrillDuration] = useState(10)
+  
+  // Data state
+  const [allAttempts, setAllAttempts] = useState<Attempt[]>([])
+  const [allLeads, setAllLeads] = useState<Lead[]>([])
+  const [experiments, setExperiments] = useState<any[]>([]) // using any for simplicity or import type
+
+  useEffect(() => {
+    const fetchData = async () => {
+      // Fetch attempts
+      const supabase = getSupabase()
+      const { data: attemptsData } = await supabase
+        .from('attempts')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (attemptsData) {
+         const mappedAttempts: Attempt[] = attemptsData.map((a: any) => ({
+            id: a.id,
+            leadId: a.lead_id,
+            contactId: a.contact_id,
+            timestamp: a.timestamp,
+            outcome: a.outcome,
+            why: a.why,
+            repMistake: a.rep_mistake,
+            dmReached: a.dm_reached,
+            nextAction: a.next_action,
+            note: a.note,
+            durationSec: a.duration_sec,
+            experimentTag: a.experiment_tag,
+            sessionId: a.session_id,
+            createdAt: a.created_at
+         }))
+         setAllAttempts(mappedAttempts)
+      }
+
+      // Fetch leads
+      const { data: leadsData } = await supabase.from('leads').select('*')
+      if (leadsData) {
+          const mappedLeads: Lead[] = leadsData.map((l: any) => ({
+              id: l.id,
+              company: l.company,
+              phone: l.phone,
+              segment: l.segment,
+              isDecisionMaker: l.is_decision_maker || "unknown",
+              isFleetOwner: l.is_fleet_owner || "unknown",
+              contacts: [], // Simplification for batch review which mostly needs company name
+              createdAt: l.created_at
+          }))
+          setAllLeads(mappedLeads)
+      }
+      
+      // Fetch experiments
+      const { data: expData } = await supabase.from('experiments').select('*')
+      if (expData) {
+          setExperiments(expData)
+      }
+    }
+    fetchData()
+  }, [])
 
   const startReview = () => {
     let filteredAttempts = [...allAttempts]
@@ -272,8 +332,8 @@ export default function BatchReviewPage() {
           {/* Attempts to review */}
           <div className="space-y-4 mb-6">
             {currentPageAttempts.map((attempt) => {
-              const lead = getLeadById(attempt.leadId)
-              const experiment = attempt.experimentTag ? getExperimentById(attempt.experimentTag) : null
+              const lead = allLeads.find(l => l.id === attempt.leadId)
+              const experiment = attempt.experimentTag ? experiments.find(e => e.id === attempt.experimentTag) : null
               const isExpanded = expandedAttemptId === attempt.id
               
               return (
@@ -470,7 +530,7 @@ export default function BatchReviewPage() {
                   {topAttempts.length > 0 ? (
                     <div className="space-y-2">
                       {topAttempts.map(attempt => {
-                        const lead = getLeadById(attempt.leadId)
+                        const lead = allLeads.find(l => l.id === attempt.leadId)
                         return (
                           <div key={attempt.id} className="p-2 border rounded text-sm">
                             <p className="font-medium">{lead?.company}</p>
@@ -496,7 +556,7 @@ export default function BatchReviewPage() {
                   {bottomAttempts.length > 0 ? (
                     <div className="space-y-2">
                       {bottomAttempts.map(attempt => {
-                        const lead = getLeadById(attempt.leadId)
+                        const lead = allLeads.find(l => l.id === attempt.leadId)
                         return (
                           <div key={attempt.id} className="p-2 border rounded text-sm">
                             <p className="font-medium">{lead?.company}</p>

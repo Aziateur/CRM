@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/integrations/openphone/route": "app/api/integrations/openphone/route.js",
+  "/api/integrations/openphone/webhook/route": "app/api/integrations/openphone/webhook/route.js",
+  "/batch-review/page": "app/batch-review/page.js",
+  "/dial-session/page": "app/dial-session/page.js",
+  "/page": "app/page.js",
+  "/playbook/page": "app/playbook/page.js",
+  "/settings/page": "app/settings/page.js"
+}
