@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { getSupabase } from './supabase'
 import type { Lead, Attempt, Contact } from './store'
 
 // Check if Supabase is configured
@@ -14,8 +14,8 @@ export function isSupabaseConfigured(): boolean {
 // ============================================================================
 
 export async function fetchLeads(): Promise<Lead[]> {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase not configured, returning empty array')
+  const supabase = getSupabase()
+  if (!supabase) {
     return []
   }
 
@@ -34,8 +34,8 @@ export async function fetchLeads(): Promise<Lead[]> {
 }
 
 export async function createLead(lead: Lead): Promise<Lead | null> {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase not configured, cannot create lead')
+  const supabase = getSupabase()
+  if (!supabase) {
     return null
   }
 
@@ -56,8 +56,8 @@ export async function createLead(lead: Lead): Promise<Lead | null> {
 }
 
 export async function updateLead(lead: Lead): Promise<Lead | null> {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase not configured, cannot update lead')
+  const supabase = getSupabase()
+  if (!supabase) {
     return null
   }
 
@@ -79,8 +79,8 @@ export async function updateLead(lead: Lead): Promise<Lead | null> {
 }
 
 export async function deleteLead(leadId: string): Promise<boolean> {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase not configured, cannot delete lead')
+  const supabase = getSupabase()
+  if (!supabase) {
     return false
   }
 
@@ -102,8 +102,8 @@ export async function deleteLead(leadId: string): Promise<boolean> {
 // ============================================================================
 
 export async function fetchAttempts(): Promise<Attempt[]> {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase not configured, returning empty array')
+  const supabase = getSupabase()
+  if (!supabase) {
     return []
   }
 
@@ -121,8 +121,8 @@ export async function fetchAttempts(): Promise<Attempt[]> {
 }
 
 export async function createAttempt(attempt: Attempt): Promise<Attempt | null> {
-  if (!isSupabaseConfigured()) {
-    console.warn('Supabase not configured, cannot create attempt')
+  const supabase = getSupabase()
+  if (!supabase) {
     return null
   }
 
