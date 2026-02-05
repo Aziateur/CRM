@@ -246,8 +246,9 @@ export default function DialSessionPage() {
     // Register pending attempt (in production, this would call the API)
     console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
     
-    // Trigger tel: link to open default calling app
-    window.location.href = `tel:${e164Number}`
+    // Trigger tel: link. Use window.open for desktop to avoid navigating away from CRM.
+    // On mobile, this will still trigger the native dialer app.
+    window.open(`tel:${e164Number}`, '_parent')
     
     // Start the call timer
     startCall()
