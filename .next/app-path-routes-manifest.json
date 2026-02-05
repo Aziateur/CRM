@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/integrations/openphone/route": "/api/integrations/openphone",
+  "/api/integrations/openphone/webhook/route": "/api/integrations/openphone/webhook",
+  "/batch-review/page": "/batch-review",
+  "/dial-session/page": "/dial-session",
+  "/page": "/",
+  "/playbook/page": "/playbook",
+  "/settings/page": "/settings"
+}
