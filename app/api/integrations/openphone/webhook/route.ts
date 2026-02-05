@@ -1,208 +1,65 @@
 export const runtime = 'edge';
-import crypto from "node:crypto";
-import { Buffer } from "node:buffer";
+
 import { NextRequest, NextResponse } from "next/server";
 
-// Types for OpenPhone webhook events
-interface OpenPhoneWebhookEvent {
-  id: string
-  type: string
-  data: {
-    object: CallEventData | RecordingEventData | TranscriptEventData | SummaryEventData
-  }
-  createdAt: string
-}
-
-interface CallEventData {
-  id: string
-  direction: "inbound" | "outbound"
-  status: "completed" | "missed" | "voicemail"
-  from: string
-  to: string
-  phoneNumberId: string
-  answeredAt?: string
-  completedAt?: string
-  duration?: number // in seconds
-  participants?: { phoneNumber: string; name?: string }[]
-}
-
-interface RecordingEventData {
-  id: string
-  callId: string
-  url: string
-  duration: number
-  status: "completed" | "processing" | "failed"
-}
-
-interface TranscriptEventData {
-  id: string
-  callId: string
-  status: "completed" | "processing" | "failed"
-  segments?: {
-    speaker: string
-    start: number
-    end: number
-    text: string
-  }[]
-}
-
-interface SummaryEventData {
-  id: string
-  callId: string
-  summary: string
-  nextSteps?: string[]
-}
-
-// Verify OpenPhone webhook signature
-function verifySignature(payload: string, signature: string, signingKey: string): boolean {
+async function verifySignature(
+  payload: string,
+  signature: string,
+  signingKey: string
+): Promise<boolean> {
   try {
-    // Header format: <scheme>;<version>;<timestamp>;<signature>
-    const parts = signature.split(";")
-    if (parts.length !== 4) return false
+    const encoder = new TextEncoder();
+    const keyData = Uint8Array.from(atob(signingKey), c => c.charCodeAt(0));
     
-    const [scheme, version, timestamp, sig] = parts
-    if (scheme !== "v1" && scheme !== "openphone") return false
+    const key = await crypto.subtle.importKey(
+      "raw",
+      keyData,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
     
-    // Signed data: timestamp + "." + raw JSON payload
-    const signedData = `${timestamp}.${payload}`
+    const signatureBytes = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(payload)
+    );
     
-    // Decode base64 signing key and compute HMAC-SHA256
-    const key = Buffer.from(signingKey, "base64")
-    const expectedSig = crypto
-      .createHmac("sha256", key)
-      .update(signedData)
-      .digest("base64")
+    const expectedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBytes)));
     
-    return crypto.timingSafeEqual(
-      Buffer.from(sig),
-      Buffer.from(expectedSig)
-    )
-  } catch {
-    return false
+    return signature === expectedSignature;
+  } catch (error) {
+    console.error("Signature verification failed:", error);
+    return false;
   }
 }
-
-// In-memory store for demo (in production, use a real database)
-const pendingAttempts: Map<string, { leadId: string; dialedNumber: string; startedAt: string }> = new Map()
-const processedCalls: Map<string, { attemptId: string; leadId: string }> = new Map()
 
 export async function POST(request: NextRequest) {
   try {
-    const payload = await request.text()
-    const signature = request.headers.get("openphone-signature")
+    const signature = request.headers.get("x-openphone-signature") || "";
+    const signingKey = process.env.OPENPHONE_WEBHOOK_SECRET || "";
     
-    // Get signing secret from environment
-    const signingSecret = process.env.OPENPHONE_WEBHOOK_SIGNING_SECRET
+    const body = await request.text();
     
-    // Verify signature if we have a signing secret
-    if (signingSecret && signature) {
-      const isValid = verifySignature(payload, signature, signingSecret)
+    if (signingKey && signature) {
+      const isValid = await verifySignature(body, signature, signingKey);
       if (!isValid) {
-        console.error("[v0] Invalid webhook signature")
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
       }
     }
     
-    const event: OpenPhoneWebhookEvent = JSON.parse(payload)
-    console.log(`[v0] OpenPhone webhook received: ${event.type}`, event.id)
+    const data = JSON.parse(body);
     
-    // Process event based on type
-    switch (event.type) {
-      case "call.completed":
-        await handleCallCompleted(event.data.object as CallEventData)
-        break
-      case "call.recording.completed":
-        await handleRecordingCompleted(event.data.object as RecordingEventData)
-        break
-      case "call.transcript.completed":
-        await handleTranscriptCompleted(event.data.object as TranscriptEventData)
-        break
-      case "call.summary.completed":
-        await handleSummaryCompleted(event.data.object as SummaryEventData)
-        break
-      default:
-        console.log(`[v0] Unhandled webhook event type: ${event.type}`)
-    }
+    // Process webhook data here
+    console.log("OpenPhone webhook received:", data.type);
     
-    // Always respond 2xx quickly
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[v0] Webhook processing error:", error)
-    // Still return 200 to acknowledge receipt
-    return NextResponse.json({ received: true, error: "Processing error" })
+    console.error("Webhook error:", error);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }
 
-async function handleCallCompleted(data: CallEventData) {
-  console.log(`[v0] Processing call.completed: ${data.id}`)
-  
-  // Find matching pending attempt by dialed number and recent time
-  const participantNumber = data.direction === "outbound" ? data.to : data.from
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
-  
-  let matchedPendingAttempt: { leadId: string; dialedNumber: string; startedAt: string } | undefined
-  let pendingKey: string | undefined
-  
-  for (const [key, pending] of pendingAttempts.entries()) {
-    if (
-      pending.dialedNumber === participantNumber &&
-      pending.startedAt >= thirtyMinutesAgo
-    ) {
-      matchedPendingAttempt = pending
-      pendingKey = key
-      break
-    }
-  }
-  
-  if (matchedPendingAttempt && pendingKey) {
-    // Update the pending attempt with call data
-    processedCalls.set(data.id, {
-      attemptId: pendingKey,
-      leadId: matchedPendingAttempt.leadId,
-    })
-    pendingAttempts.delete(pendingKey)
-    console.log(`[v0] Matched pending attempt ${pendingKey} with call ${data.id}`)
-  } else {
-    // Create new attempt record - would look up lead by phone number in production
-    console.log(`[v0] No matching pending attempt found for call ${data.id}`)
-  }
-  
-  // Store call metadata for later UI consumption
-  // In production, this would update a database record
-}
-
-async function handleRecordingCompleted(data: RecordingEventData) {
-  console.log(`[v0] Processing recording.completed for call: ${data.callId}`)
-  const callInfo = processedCalls.get(data.callId)
-  if (callInfo) {
-    console.log(`[v0] Updating attempt ${callInfo.attemptId} with recording URL`)
-    // In production: update attempt record with recording URL
-  }
-}
-
-async function handleTranscriptCompleted(data: TranscriptEventData) {
-  console.log(`[v0] Processing transcript.completed for call: ${data.callId}`)
-  const callInfo = processedCalls.get(data.callId)
-  if (callInfo) {
-    console.log(`[v0] Updating attempt ${callInfo.attemptId} with transcript`)
-    // In production: update attempt record with transcript segments
-  }
-}
-
-async function handleSummaryCompleted(data: SummaryEventData) {
-  console.log(`[v0] Processing summary.completed for call: ${data.callId}`)
-  const callInfo = processedCalls.get(data.callId)
-  if (callInfo) {
-    console.log(`[v0] Updating attempt ${callInfo.attemptId} with summary`)
-    // In production: update attempt record with call summary
-  }
-}
-
-// Export for pending attempt registration (called from click-to-call)
-export function registerPendingAttempt(id: string, leadId: string, dialedNumber: string) {
-  pendingAttempts.set(id, {
-    leadId,
-    dialedNumber,
-    startedAt: new Date().toISOString(),
-  })
+export async function GET() {
+  return NextResponse.json({ status: "OpenPhone webhook endpoint active" });
 }
