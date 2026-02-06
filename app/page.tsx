@@ -366,8 +366,22 @@ export default function LeadsPage() {
         }
     }
 
-    // 3. Launch dialer (OpenPhone)
-    window.open(`tel:${phone}`, '_parent')
+    // 3. Copy phone to clipboard
+    try {
+        await navigator.clipboard.writeText(phone)
+    } catch (err) {
+        console.error('Failed to copy phone number', err)
+    }
+
+    // 4. Launch dialer (OpenPhone) in a NEW TAB
+    const w = window.open(`tel:${phone}`, '_blank', 'noopener,noreferrer')
+    if (!w) {
+        toast({
+            variant: "destructive",
+            title: "Popup blocked",
+            description: "Please allow popups for this site to launch the dialer."
+        })
+    }
   }
 
   const handleSaveLead = async () => {

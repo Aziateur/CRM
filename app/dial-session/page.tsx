@@ -280,9 +280,18 @@ export default function DialSessionPage() {
     // Register pending attempt (in production, this would call the API)
     console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
     
-    // Trigger tel: link. Use window.open for desktop to avoid navigating away from CRM.
-    // On mobile, this will still trigger the native dialer app.
-    window.open(`tel:${e164Number}`, '_parent')
+    // Copy phone to clipboard
+    try {
+        await navigator.clipboard.writeText(e164Number)
+    } catch (err) {
+        console.error('Failed to copy phone number', err)
+    }
+
+    // Trigger tel: link in NEW TAB
+    const w = window.open(`tel:${e164Number}`, '_blank', 'noopener,noreferrer')
+    if (!w) {
+        alert("Popup blocked. Please allow popups for this site to launch the dialer.")
+    }
     
     // Start the call timer
     startCall()
