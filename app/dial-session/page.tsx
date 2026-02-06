@@ -239,61 +239,56 @@ export default function DialSessionPage() {
     // Format phone to E.164 (assuming it's already formatted or close)
     const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
 
-    // Sandbox only: Create attempt and call_session
-    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
-        const supabase = getSupabase()
-        
-        // 1. Create attempt
-        const { data: attempt, error: attemptError } = await supabase.from('attempts').insert([{
-            lead_id: currentLead.id,
-            timestamp: new Date().toISOString(),
-            outcome: 'No connect', // Default initial state
-            dm_reached: false,
-            next_action: 'Call again',
-            duration_sec: 0
-        }]).select().single()
-
-        if (attemptError) {
-            console.error("Error creating attempt:", attemptError)
-            return
-        }
-
-        // 2. Create call_session
-        const { error: sessionError } = await supabase.from('call_sessions').insert([{
-            attempt_id: attempt.id,
-            lead_id: currentLead.id,
-            phone_e164: e164Number,
-            direction: 'outgoing',
-            status: 'initiated',
-            started_at: new Date().toISOString()
-        }])
-
-        if (sessionError) {
-            console.error("Error creating call session:", sessionError)
-        }
+    // 1) IMMEDIATELY open the call tab synchronously
+    const w = window.open(`tel:${e164Number}`, '_blank', 'noopener,noreferrer')
+    if (!w) {
+        alert("Popup blocked. Please allow popups for this site to launch the dialer.")
     }
-    
-    // Create pending attempt for OpenPhone webhook matching
-    const attemptId = `pending-${Date.now()}`
-    setPendingAttemptId(attemptId)
-    
-    // Register pending attempt (in production, this would call the API)
-    console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
-    
-    // Copy phone to clipboard
+
+    // 2) Copy phone to clipboard (background)
     try {
         await navigator.clipboard.writeText(e164Number)
     } catch (err) {
         console.error('Failed to copy phone number', err)
     }
 
-    // Trigger tel: link in NEW TAB via about:blank trick
-    const w = window.open("about:blank", "_blank", "noopener,noreferrer")
-    if (!w) {
-        alert("Popup blocked. Please allow popups for this site to launch the dialer.")
-        return
+    // 3) Sandbox only: Create attempt and call_session (background)
+    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
+        const supabase = getSupabase()
+        
+        // Non-blocking inserts
+        supabase.from('attempts').insert([{
+            lead_id: currentLead.id,
+            timestamp: new Date().toISOString(),
+            outcome: 'No connect',
+            dm_reached: false,
+            next_action: 'Call again',
+            duration_sec: 0
+        }]).select().single().then(({ data: attempt, error: attemptError }) => {
+            if (attemptError) {
+                console.error("Error creating attempt:", attemptError)
+                return
+            }
+            if (attempt) {
+                supabase.from('call_sessions').insert([{
+                    attempt_id: attempt.id,
+                    lead_id: currentLead.id,
+                    phone_e164: e164Number,
+                    direction: 'outgoing',
+                    status: 'initiated',
+                    started_at: new Date().toISOString()
+                }]).then(({ error }) => {
+                    if (error) console.error("Error creating call session:", error)
+                })
+            }
+        })
     }
-    w.location.href = `tel:${e164Number}`
+    
+    // Create pending attempt for OpenPhone webhook matching
+    const attemptId = `pending-${Date.now()}`
+    setPendingAttemptId(attemptId)
+    
+    console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
     
     // Start the call timer
     startCall()
