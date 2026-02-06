@@ -287,11 +287,13 @@ export default function DialSessionPage() {
         console.error('Failed to copy phone number', err)
     }
 
-    // Trigger tel: link in NEW TAB
-    const w = window.open(`tel:${e164Number}`, '_blank', 'noopener,noreferrer')
+    // Trigger tel: link in NEW TAB via about:blank trick
+    const w = window.open("about:blank", "_blank", "noopener,noreferrer")
     if (!w) {
         alert("Popup blocked. Please allow popups for this site to launch the dialer.")
+        return
     }
+    w.location.href = `tel:${e164Number}`
     
     // Start the call timer
     startCall()
