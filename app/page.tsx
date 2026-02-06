@@ -325,44 +325,62 @@ export default function LeadsPage() {
     if (!selectedLead || !selectedLead.phone) return
 
     const phone = selectedLead.phone.replace(/[^+\d]/g, "")
+
+    // 1) Open new tab immediately (prevents popup blocking)
+    const w = window.open("about:blank", "_blank", "noopener,noreferrer")
+    if (!w) {
+        toast({
+            variant: "destructive",
+            title: "Popup blocked",
+            description: "Please allow popups for this site to launch the dialer."
+        })
+        return
+    }
     
     // Sandbox only: Create attempt and call_session
     if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
         const supabase = getSupabase()
         
-        // 1. Create attempt
-        const { data: attempt, error: attemptError } = await supabase.from('attempts').insert([{
-            lead_id: selectedLead.id,
-            timestamp: new Date().toISOString(),
-            outcome: 'No connect', // Default initial state
-            dm_reached: false,
-            next_action: 'Call again',
-            duration_sec: 0
-        }]).select().single()
+        try {
+            // 1. Create attempt
+            const { data: attempt, error: attemptError } = await supabase.from('attempts').insert([{
+                lead_id: selectedLead.id,
+                timestamp: new Date().toISOString(),
+                outcome: 'No connect', // Default initial state
+                dm_reached: false,
+                next_action: 'Call again',
+                duration_sec: 0
+            }]).select().single()
 
-        if (attemptError) {
-            console.error("Error creating attempt:", attemptError)
-            toast({
-                variant: "destructive",
-                title: "Failed to initiate call tracking",
-                description: attemptError.message
-            })
+            if (attemptError) {
+                console.error("Error creating attempt:", attemptError)
+                toast({
+                    variant: "destructive",
+                    title: "Failed to initiate call tracking",
+                    description: attemptError.message
+                })
+                w.close() // Close the blank tab if we failed
+                return
+            }
+
+            // 2. Create call_session
+            const { error: sessionError } = await supabase.from('call_sessions').insert([{
+                attempt_id: attempt.id,
+                lead_id: selectedLead.id,
+                phone_e164: phone,
+                direction: 'outgoing',
+                status: 'initiated',
+                started_at: new Date().toISOString()
+            }])
+
+            if (sessionError) {
+                console.error("Error creating call session:", sessionError)
+                // We verify attempting linkage failed but call can proceed
+            }
+        } catch (e) {
+            console.error("Unexpected error in call setup:", e)
+            w.close()
             return
-        }
-
-        // 2. Create call_session
-        const { error: sessionError } = await supabase.from('call_sessions').insert([{
-            attempt_id: attempt.id,
-            lead_id: selectedLead.id,
-            phone_e164: phone,
-            direction: 'outgoing',
-            status: 'initiated',
-            started_at: new Date().toISOString()
-        }])
-
-        if (sessionError) {
-            console.error("Error creating call session:", sessionError)
-            // We proceed with the call even if session tracking fails, but log it
         }
     }
 
@@ -373,15 +391,8 @@ export default function LeadsPage() {
         console.error('Failed to copy phone number', err)
     }
 
-    // 4. Launch dialer (OpenPhone) in a NEW TAB
-    const w = window.open(`tel:${phone}`, '_blank', 'noopener,noreferrer')
-    if (!w) {
-        toast({
-            variant: "destructive",
-            title: "Popup blocked",
-            description: "Please allow popups for this site to launch the dialer."
-        })
-    }
+    // 4. Redirect the blank tab to the call URL
+    w.location.href = `tel:${phone}`
   }
 
   const handleSaveLead = async () => {
