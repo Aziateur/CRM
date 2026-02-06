@@ -173,6 +173,9 @@ export default function DialSessionPage() {
   const [callStartTime, setCallStartTime] = useState<Date | null>(null)
   const [callDuration, setCallDuration] = useState(0)
   
+  // Current attempt ID for updating
+  const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null)
+
   // Log attempt modal - SPEED OPTIMIZED
   const [isLogOpen, setIsLogOpen] = useState(false)
   const [selectedOutcome, setSelectedOutcome] = useState<AttemptOutcome | null>(null)
@@ -399,14 +402,58 @@ export default function DialSessionPage() {
     }
 
     const supabase = getSupabase()
-    const { data, error } = await supabase.from('attempts').insert([attemptData]).select().single()
+    
+    let result;
+    
+    // Update existing attempt if we have one (from initiateCall)
+    if (currentAttemptId) {
+        console.log("Updating existing attempt:", currentAttemptId)
+        result = await supabase
+            .from('attempts')
+            .update(attemptData)
+            .eq('id', currentAttemptId)
+            .select()
+            .single()
+            
+        // Reset for next call
+        setCurrentAttemptId(null)
+    } else {
+        // Create new attempt if we didn't call (just logging)
+        console.log("Creating new attempt (no call initiated)")
+        result = await supabase
+            .from('attempts')
+            .insert([attemptData])
+            .select()
+            .single()
+    }
 
+    const { data, error } = result
+    
     if (error) {
         console.error("Error logging attempt:", error)
         return
     }
 
     if (data) {
+        // If we updated an attempt, we might want to fetch artifacts associated with it
+        // based on the call_session created earlier.
+        // For now, the view v_calls_with_artifacts handles the display.
+        // If we want to persist artifacts TO the attempt row, we'd do it here:
+        /*
+        const { data: artifacts } = await supabase
+            .from('v_calls_with_artifacts')
+            .select('recording_url, transcript_text')
+            .eq('attempt_id', data.id)
+            .single()
+            
+        if (artifacts && (artifacts.recording_url || artifacts.transcript_text)) {
+             await supabase.from('attempts').update({
+                 recording_url: artifacts.recording_url,
+                 transcript_text: artifacts.transcript_text
+             }).eq('id', data.id)
+        }
+        */
+
         const attempt: Attempt = {
             id: data.id,
             leadId: data.lead_id,
