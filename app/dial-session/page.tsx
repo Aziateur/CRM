@@ -233,15 +233,49 @@ export default function DialSessionPage() {
   }, [sessionAttempts])
 
   // Function to initiate a call and register pending attempt
-  const initiateCall = useCallback(() => {
+  const initiateCall = useCallback(async () => {
     if (!currentLead?.phone) return
+    
+    // Format phone to E.164 (assuming it's already formatted or close)
+    const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
+
+    // Sandbox only: Create attempt and call_session
+    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
+        const supabase = getSupabase()
+        
+        // 1. Create attempt
+        const { data: attempt, error: attemptError } = await supabase.from('attempts').insert([{
+            lead_id: currentLead.id,
+            timestamp: new Date().toISOString(),
+            outcome: 'No connect', // Default initial state
+            dm_reached: false,
+            next_action: 'Call again',
+            duration_sec: 0
+        }]).select().single()
+
+        if (attemptError) {
+            console.error("Error creating attempt:", attemptError)
+            return
+        }
+
+        // 2. Create call_session
+        const { error: sessionError } = await supabase.from('call_sessions').insert([{
+            attempt_id: attempt.id,
+            lead_id: currentLead.id,
+            phone_e164: e164Number,
+            direction: 'outgoing',
+            status: 'initiated',
+            started_at: new Date().toISOString()
+        }])
+
+        if (sessionError) {
+            console.error("Error creating call session:", sessionError)
+        }
+    }
     
     // Create pending attempt for OpenPhone webhook matching
     const attemptId = `pending-${Date.now()}`
     setPendingAttemptId(attemptId)
-    
-    // Format phone to E.164 (assuming it's already formatted or close)
-    const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
     
     // Register pending attempt (in production, this would call the API)
     console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)

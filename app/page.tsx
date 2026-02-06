@@ -6,6 +6,7 @@ import { Topbar } from "@/components/topbar"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CallsPanel } from "@/components/CallsPanel"
 import {
   Table,
   TableBody,
@@ -319,6 +320,55 @@ export default function LeadsPage() {
     : []
 
   const lastAttempt = selectedLeadAttempts[0] || null
+
+  const handleCall = async () => {
+    if (!selectedLead || !selectedLead.phone) return
+
+    const phone = selectedLead.phone.replace(/[^+\d]/g, "")
+    
+    // Sandbox only: Create attempt and call_session
+    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
+        const supabase = getSupabase()
+        
+        // 1. Create attempt
+        const { data: attempt, error: attemptError } = await supabase.from('attempts').insert([{
+            lead_id: selectedLead.id,
+            timestamp: new Date().toISOString(),
+            outcome: 'No connect', // Default initial state
+            dm_reached: false,
+            next_action: 'Call again',
+            duration_sec: 0
+        }]).select().single()
+
+        if (attemptError) {
+            console.error("Error creating attempt:", attemptError)
+            toast({
+                variant: "destructive",
+                title: "Failed to initiate call tracking",
+                description: attemptError.message
+            })
+            return
+        }
+
+        // 2. Create call_session
+        const { error: sessionError } = await supabase.from('call_sessions').insert([{
+            attempt_id: attempt.id,
+            lead_id: selectedLead.id,
+            phone_e164: phone,
+            direction: 'outgoing',
+            status: 'initiated',
+            started_at: new Date().toISOString()
+        }])
+
+        if (sessionError) {
+            console.error("Error creating call session:", sessionError)
+            // We proceed with the call even if session tracking fails, but log it
+        }
+    }
+
+    // 3. Launch dialer (OpenPhone)
+    window.open(`tel:${phone}`, '_parent')
+  }
 
   const handleSaveLead = async () => {
     if (!editedLead) return
@@ -998,11 +1048,14 @@ export default function LeadsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {selectedLead.phone && (
-                        <Button asChild variant="default" size="sm" className="bg-green-600 hover:bg-green-700">
-                          <a href={`tel:${selectedLead.phone}`}>
+                        <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={handleCall}
+                        >
                             <Phone className="h-4 w-4 mr-1" />
                             Call
-                          </a>
                         </Button>
                       )}
                       <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setIsLogAttemptOpen(true)}>
@@ -1065,6 +1118,9 @@ export default function LeadsPage() {
                         </CardContent>
                       </Card>
                     )}
+
+                    {/* CALLS PANEL (Sandbox Only) */}
+                    <CallsPanel leadId={selectedLead.id} phone={selectedLead.phone} />
 
                     {/* 3. ACCOUNT REALITY CARD (Core Card) */}
                     <Card className={!editedLead.nextCallObjective ? "border-amber-500" : ""}>
