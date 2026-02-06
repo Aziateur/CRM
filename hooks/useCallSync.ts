@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { getSupabase } from "@/lib/supabase"
 
-interface CallArtifacts {
+export interface CallArtifacts {
   recording_url: string | null
   transcript_text: string | null
   status: string
@@ -14,14 +14,15 @@ interface UseCallSyncResult {
   artifacts: CallArtifacts | null
   error: string | null
   retry: () => void
-  status: 'idle' | 'polling' | 'completed' | 'timeout'
+  status: 'idle' | 'polling' | 'partial' | 'completed' | 'timeout'
+  attemptId: string | null
 }
 
 export function useCallSync(attemptId: string | null, callSessionId: string | null): UseCallSyncResult {
   const [loading, setLoading] = useState(false)
   const [artifacts, setArtifacts] = useState<CallArtifacts | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<'idle' | 'polling' | 'completed' | 'timeout'>('idle')
+  const [status, setStatus] = useState<'idle' | 'polling' | 'partial' | 'completed' | 'timeout'>('idle')
   
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -43,6 +44,8 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
     try {
       const supabase = getSupabase()
       
+      console.log(`[CallSync] Polling view... attemptId=${attemptId} callSessionId=${callSessionId}`)
+
       // Preferred: Query view by attempt_id if available, otherwise call_session_id
       let query = supabase.from('v_calls_with_artifacts').select('*')
       
@@ -55,7 +58,7 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
       const { data, error: dbError } = await query.limit(1).single()
 
       if (dbError) {
-        // Ignore "PGRST116" (no rows) as we are polling for creation
+        // Ignore "PGRST116" (no rows) as we are polling for creation/updates
         if (dbError.code !== 'PGRST116') {
           console.error("[CallSync] DB Error:", dbError)
         }
@@ -69,15 +72,27 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
           status: data.status
         })
 
-        if (data.recording_url || data.transcript_text) {
+        const hasRec = !!data.recording_url
+        const hasTrans = !!data.transcript_text
+        const isComplete = hasRec && hasTrans
+
+        // Update state if we have anything interesting
+        if (hasRec || hasTrans) {
           setArtifacts({
             recording_url: data.recording_url,
             transcript_text: data.transcript_text,
             status: data.status
           })
-          setStatus('completed')
-          setLoading(false)
-          stopPolling()
+          
+          if (isComplete) {
+            setStatus('completed')
+            setLoading(false)
+            stopPolling()
+            console.log("[CallSync] Sync Complete: All artifacts found.")
+          } else {
+            setStatus('partial')
+            // Don't stop polling if partial, we want both if possible
+          }
         }
       }
     } catch (err) {
@@ -88,7 +103,7 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
   const startPolling = () => {
     if (status === 'completed') return
     
-    console.log(`[CallSync] Starting poll for attempt=${attemptId} session=${callSessionId}`)
+    console.log(`[CallSync] Starting poll logic.`)
     setStatus('polling')
     setLoading(true)
     startTimeRef.current = Date.now()
@@ -112,7 +127,8 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
 
   const retry = () => {
     stopPolling()
-    startPolling()
+    setStatus('idle')
+    setTimeout(() => startPolling(), 100)
   }
 
   useEffect(() => {
@@ -124,5 +140,5 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
     return () => stopPolling()
   }, [attemptId, callSessionId])
 
-  return { loading, artifacts, error, retry, status }
+  return { loading, artifacts, error, retry, status, attemptId }
 }

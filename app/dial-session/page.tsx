@@ -435,24 +435,20 @@ export default function DialSessionPage() {
     }
 
     if (data) {
-        // If we updated an attempt, we might want to fetch artifacts associated with it
-        // based on the call_session created earlier.
-        // For now, the view v_calls_with_artifacts handles the display.
-        // If we want to persist artifacts TO the attempt row, we'd do it here:
-        /*
-        const { data: artifacts } = await supabase
-            .from('v_calls_with_artifacts')
-            .select('recording_url, transcript_text')
-            .eq('attempt_id', data.id)
-            .single()
-            
-        if (artifacts && (artifacts.recording_url || artifacts.transcript_text)) {
-             await supabase.from('attempts').update({
-                 recording_url: artifacts.recording_url,
-                 transcript_text: artifacts.transcript_text
-             }).eq('id', data.id)
+        // Fetch artifacts associated with this attempt (if any) via the view
+        // We do this to ensure the local state has the recording/transcript if available
+        let artifacts = { recording_url: null, transcript_text: null }
+        if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
+             const { data: artifactData } = await supabase
+                .from('v_calls_with_artifacts')
+                .select('recording_url, transcript_text')
+                .eq('attempt_id', data.id)
+                .single()
+             
+             if (artifactData) {
+                 artifacts = artifactData
+             }
         }
-        */
 
         const attempt: Attempt = {
             id: data.id,
@@ -467,7 +463,9 @@ export default function DialSessionPage() {
             experimentTag: data.experiment_tag,
             sessionId: data.session_id,
             durationSec: data.duration_sec,
-            createdAt: data.created_at
+            createdAt: data.created_at,
+            recordingUrl: artifacts.recording_url || undefined,
+            transcript: artifacts.transcript_text ? [{ speaker: 'mixed', startSec: 0, endSec: 0, content: artifacts.transcript_text }] : undefined
         }
 
         setSessionAttempts([attempt, ...sessionAttempts])
