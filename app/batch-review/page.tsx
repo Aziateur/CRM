@@ -111,7 +111,7 @@ export default function BatchReviewPage() {
       // Fetch attempts
       const supabase = getSupabase()
       const { data: attemptsData } = await supabase
-        .from('attempts')
+        .from('v_attempts_enriched')
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -130,7 +130,9 @@ export default function BatchReviewPage() {
             durationSec: a.duration_sec,
             experimentTag: a.experiment_tag,
             sessionId: a.session_id,
-            createdAt: a.created_at
+            createdAt: a.created_at,
+            recordingUrl: a.recording_url || a.call_recording_url,
+            callTranscriptText: a.call_transcript_text
          }))
          setAllAttempts(mappedAttempts)
       }

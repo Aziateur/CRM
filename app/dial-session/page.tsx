@@ -130,9 +130,9 @@ export default function DialSessionPage() {
         setLeads(mappedLeads)
       }
 
-      // Fetch attempts
+      // Fetch attempts enriched with call recordings/transcripts
       const { data: attemptsData } = await supabase
-        .from('attempts')
+        .from('v_attempts_enriched')
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -153,7 +153,9 @@ export default function DialSessionPage() {
             experimentTag: a.experiment_tag || a.experimentTag,
             sessionId: a.session_id || a.sessionId,
             createdAt: a.created_at || a.createdAt || new Date().toISOString(),
-            recordingUrl: a.recording_url,
+            recordingUrl: a.recording_url || a.call_recording_url,
+            recordingDurationSec: a.call_duration_seconds,
+            callTranscriptText: a.call_transcript_text,
             transcript: a.transcript
          }))
          setAllAttemptsList(mappedAttempts)

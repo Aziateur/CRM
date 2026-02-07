@@ -1,2 +1,6 @@
-.next/cache
+.next
 node_modules
+.mcp.json
+.env
+.env.local
+tsconfig.tsbuildinfo
