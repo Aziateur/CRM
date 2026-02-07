@@ -1,2 +1,5 @@
 .next/cache
 node_modules
+.mcp.json
+.env
+.env.local
