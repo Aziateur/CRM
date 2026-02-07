@@ -166,9 +166,9 @@ export default function LeadsPage() {
         setLeads(mappedLeads)
       }
 
-      // Fetch attempts
+      // Fetch attempts enriched with call recordings/transcripts
       const { data: attemptsData } = await supabase
-        .from('attempts')
+        .from('v_attempts_enriched')
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -189,7 +189,9 @@ export default function LeadsPage() {
             experimentTag: a.experiment_tag || a.experimentTag,
             sessionId: a.session_id || a.sessionId,
             createdAt: a.created_at || a.createdAt || new Date().toISOString(),
-            recordingUrl: a.recording_url,
+            recordingUrl: a.recording_url || a.call_recording_url,
+            recordingDurationSec: a.call_duration_seconds,
+            callTranscriptText: a.call_transcript_text,
             transcript: a.transcript
          }))
          setAttempts(mappedAttempts)
@@ -798,7 +800,7 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-                {viewingAttempt.transcript && viewingAttempt.transcript.length > 0 && (
+                {viewingAttempt.transcript && viewingAttempt.transcript.length > 0 ? (
                   <div className="pt-2">
                     <Label className="text-xs text-muted-foreground">Transcript</Label>
                     <ScrollArea className="h-48 mt-1 border rounded p-2">
@@ -810,7 +812,14 @@ export default function LeadsPage() {
                       ))}
                     </ScrollArea>
                   </div>
-                )}
+                ) : viewingAttempt.callTranscriptText ? (
+                  <div className="pt-2">
+                    <Label className="text-xs text-muted-foreground">Transcript</Label>
+                    <ScrollArea className="h-48 mt-1 border rounded p-2">
+                      <div className="text-sm whitespace-pre-wrap">{viewingAttempt.callTranscriptText}</div>
+                    </ScrollArea>
+                  </div>
+                ) : null}
 
                 <Separator />
 
@@ -1108,7 +1117,7 @@ export default function LeadsPage() {
                               {lastAttempt.recordingUrl && (
                                 <Mic className="h-4 w-4 text-muted-foreground" />
                               )}
-                              {lastAttempt.transcript && lastAttempt.transcript.length > 0 && (
+                              {(lastAttempt.transcript && lastAttempt.transcript.length > 0 || lastAttempt.callTranscriptText) && (
                                 <FileText className="h-4 w-4 text-muted-foreground" />
                               )}
                               <span className="text-sm text-muted-foreground">
@@ -1624,7 +1633,7 @@ export default function LeadsPage() {
                                   {attempt.recordingUrl && (
                                     <Mic className="h-3 w-3 text-muted-foreground" />
                                   )}
-                                  {attempt.transcript && attempt.transcript.length > 0 && (
+                                  {(attempt.transcript && attempt.transcript.length > 0 || attempt.callTranscriptText) && (
                                     <FileText className="h-3 w-3 text-muted-foreground" />
                                   )}
                                   <span className="text-xs text-muted-foreground">

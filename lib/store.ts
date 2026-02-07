@@ -166,6 +166,7 @@ export interface Attempt {
   recordingUrl?: string
   recordingDurationSec?: number
   transcript?: TranscriptSegment[]
+  callTranscriptText?: string // plain-text transcript from webhook view
   callSummary?: string
   status?: "pending" | "completed" | "failed"
 }
