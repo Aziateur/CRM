@@ -1,6 +1,6 @@
 "use client"
 
-import { Users, BookOpen, Settings, BarChart3, Phone, ClipboardList } from "lucide-react"
+import { Users, BookOpen, Settings, BarChart3, Phone, ClipboardList, Wrench } from "lucide-react"
 
 import {
   Sidebar,
@@ -43,6 +43,11 @@ const menuItems = [
     title: "Settings",
     url: "/settings",
     icon: Settings,
+  },
+  {
+    title: "Dev Tools",
+    url: "/dev-tools",
+    icon: Wrench,
   },
 ]
 

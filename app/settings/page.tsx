@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Phone, ExternalLink, Database, Cloud } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { FieldEditor } from "@/components/field-editor"
 
 export default function Settings() {
   const webhookUrl = "https://ali-auto-cyberbellum.app.n8n.cloud/webhook/openphone"
@@ -145,8 +144,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* Custom Fields Editor */}
-          <FieldEditor />
         </div>
       </div>
     </div>
