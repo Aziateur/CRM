@@ -35,11 +35,11 @@ import {
 } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { 
-  Phone, 
-  PhoneOff, 
-  AlertTriangle, 
-  Target, 
+import {
+  Phone,
+  PhoneOff,
+  AlertTriangle,
+  Target,
   Clock,
   Building2,
   User,
@@ -49,9 +49,9 @@ import {
   ChevronDown,
   Keyboard
 } from "lucide-react"
+import { useLeads } from "@/hooks/use-leads"
+import { useAttempts } from "@/hooks/use-attempts"
 import {
-  leads as allLeads,
-  attempts as allAttempts,
   experiments,
   drills,
   stopSignals,
@@ -85,84 +85,10 @@ const outcomeStyles: Record<AttemptOutcome, string> = {
 export default function DialSessionPage() {
   const router = useRouter()
   
-  // Data state
-  const [leads, setLeads] = useState<Lead[]>([])
+  // Data state (shared hooks)
+  const { leads } = useLeads({ withContacts: true })
+  const { attempts: allAttemptsList, setAttempts: setAllAttemptsList } = useAttempts()
   const [sessionAttempts, setSessionAttempts] = useState<Attempt[]>([])
-  const [allAttemptsList, setAllAttemptsList] = useState<Attempt[]>([])
-  
-  useEffect(() => {
-    const fetchData = async () => {
-      // Fetch leads
-      const supabase = getSupabase()
-      const { data: leadsData } = await supabase
-        .from('leads')
-        .select('*, contacts(*)')
-        .order('created_at', { ascending: false })
-      
-      if (leadsData) {
-        const mappedLeads: Lead[] = leadsData.map((l: any) => ({
-          id: l.id,
-          company: l.company,
-          phone: l.phone,
-          segment: l.segment || "Unknown",
-          isDecisionMaker: l.is_decision_maker || l.isDecisionMaker || "unknown",
-          isFleetOwner: l.is_fleet_owner || l.isFleetOwner || "unknown",
-          confirmedFacts: l.confirmed_facts || l.confirmedFacts || [],
-          openQuestions: l.open_questions || l.openQuestions || [],
-          nextCallObjective: l.next_call_objective || l.nextCallObjective,
-          operationalContext: l.operational_context || l.operationalContext,
-          constraints: l.constraints || [],
-          constraintOther: l.constraint_other || l.constraintOther,
-          opportunityAngle: l.opportunity_angle || l.opportunityAngle,
-          website: l.website,
-          email: l.email,
-          address: l.address,
-          leadSource: l.lead_source || l.leadSource,
-          contacts: (l.contacts || []).map((c: any) => ({
-             id: c.id,
-             name: c.name,
-             role: c.role || "Other",
-             phone: c.phone,
-             email: c.email
-          })),
-          createdAt: l.created_at || l.createdAt || new Date().toISOString()
-        }))
-        setLeads(mappedLeads)
-      }
-
-      // Fetch attempts enriched with call recordings/transcripts
-      const { data: attemptsData } = await supabase
-        .from('v_attempts_enriched')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (attemptsData) {
-         const mappedAttempts: Attempt[] = attemptsData.map((a: any) => ({
-            id: a.id,
-            leadId: a.lead_id || a.leadId,
-            contactId: a.contact_id || a.contactId,
-            timestamp: a.timestamp,
-            outcome: a.outcome,
-            why: a.why,
-            repMistake: a.rep_mistake || a.repMistake,
-            dmReached: a.dm_reached || a.dmReached,
-            nextAction: a.next_action || a.nextAction,
-            nextActionAt: a.next_action_at || a.nextActionAt,
-            note: a.note,
-            durationSec: a.duration_sec || a.durationSec || 0,
-            experimentTag: a.experiment_tag || a.experimentTag,
-            sessionId: a.session_id || a.sessionId,
-            createdAt: a.created_at || a.createdAt || new Date().toISOString(),
-            recordingUrl: a.recording_url || a.call_recording_url,
-            recordingDurationSec: a.call_duration_seconds,
-            callTranscriptText: a.call_transcript_text,
-            transcript: a.transcript
-         }))
-         setAllAttemptsList(mappedAttempts)
-      }
-    }
-    fetchData()
-  }, [])
   
   // Session state
   const [isSessionActive, setIsSessionActive] = useState(false)

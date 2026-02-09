@@ -43,13 +43,10 @@ import {
   Check,
   AlertTriangle
 } from "lucide-react"
+import { useLeads } from "@/hooks/use-leads"
+import { useAttempts } from "@/hooks/use-attempts"
 import {
-  leads as allLeads,
-  attempts as allAttempts,
-  experiments,
   drills,
-  getLeadById,
-  getExperimentById,
   calculateMetrics,
   getTopFailureReasons,
   type Attempt,
@@ -101,65 +98,18 @@ export default function BatchReviewPage() {
   const [selectedDrill, setSelectedDrill] = useState<string>("")
   const [drillDuration, setDrillDuration] = useState(10)
   
-  // Data state
-  const [allAttempts, setAllAttempts] = useState<Attempt[]>([])
-  const [allLeads, setAllLeads] = useState<Lead[]>([])
-  const [experiments, setExperiments] = useState<any[]>([]) // using any for simplicity or import type
+  // Data state (shared hooks)
+  const { leads: allLeads } = useLeads()
+  const { attempts: allAttempts } = useAttempts()
+  const [experiments, setExperiments] = useState<{ id: string; name: string }[]>([])
 
   useEffect(() => {
-    const fetchData = async () => {
-      // Fetch attempts
+    const fetchExperiments = async () => {
       const supabase = getSupabase()
-      const { data: attemptsData } = await supabase
-        .from('v_attempts_enriched')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (attemptsData) {
-         const mappedAttempts: Attempt[] = attemptsData.map((a: any) => ({
-            id: a.id,
-            leadId: a.lead_id,
-            contactId: a.contact_id,
-            timestamp: a.timestamp,
-            outcome: a.outcome,
-            why: a.why,
-            repMistake: a.rep_mistake,
-            dmReached: a.dm_reached,
-            nextAction: a.next_action,
-            note: a.note,
-            durationSec: a.duration_sec,
-            experimentTag: a.experiment_tag,
-            sessionId: a.session_id,
-            createdAt: a.created_at,
-            recordingUrl: a.recording_url || a.call_recording_url,
-            callTranscriptText: a.call_transcript_text
-         }))
-         setAllAttempts(mappedAttempts)
-      }
-
-      // Fetch leads
-      const { data: leadsData } = await supabase.from('leads').select('*')
-      if (leadsData) {
-          const mappedLeads: Lead[] = leadsData.map((l: any) => ({
-              id: l.id,
-              company: l.company,
-              phone: l.phone,
-              segment: l.segment,
-              isDecisionMaker: l.is_decision_maker || "unknown",
-              isFleetOwner: l.is_fleet_owner || "unknown",
-              contacts: [], // Simplification for batch review which mostly needs company name
-              createdAt: l.created_at
-          }))
-          setAllLeads(mappedLeads)
-      }
-      
-      // Fetch experiments
-      const { data: expData } = await supabase.from('experiments').select('*')
-      if (expData) {
-          setExperiments(expData)
-      }
+      const { data } = await supabase.from("experiments").select("*")
+      if (data) setExperiments(data)
     }
-    fetchData()
+    fetchExperiments()
   }, [])
 
   const startReview = () => {
