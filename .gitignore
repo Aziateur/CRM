@@ -1,4 +1,4 @@
-.next/cache
+.next
 node_modules
 .mcp.json
 .env
