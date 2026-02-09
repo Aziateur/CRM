@@ -17,6 +17,7 @@ import {
   repMistakeOptions,
   isDmReached,
   getDefaultNextAction,
+  getDefaultTaskForOutcome,
   type Lead,
   type Attempt,
   type AttemptOutcome,
@@ -85,6 +86,29 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
         createdAt: data.created_at,
       }
       onAttemptLogged(attempt)
+
+      // Fire-and-forget: auto-create follow-up task based on outcome
+      if (lead) {
+        const taskDef = getDefaultTaskForOutcome(outcome, why || undefined, lead.company)
+        if (taskDef) {
+          const dueAt = new Date()
+          dueAt.setDate(dueAt.getDate() + taskDef.dueDays)
+          supabase
+            .from("tasks")
+            .insert([{
+              lead_id: lead.id,
+              attempt_id: data.id,
+              type: taskDef.type,
+              title: taskDef.title,
+              due_at: dueAt.toISOString(),
+              priority: "normal",
+            }])
+            .then(({ error: taskError }) => {
+              if (taskError) console.warn("[auto-task] Skipped:", taskError.message)
+            })
+        }
+      }
+
       reset()
       onOpenChange(false)
     }

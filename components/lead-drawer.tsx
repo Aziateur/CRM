@@ -3,6 +3,10 @@
 import { useState } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useTasks } from "@/hooks/use-tasks"
+import { usePipelineStages } from "@/hooks/use-pipeline-stages"
+import { useFieldDefinitions } from "@/hooks/use-field-definitions"
+import { DynamicFieldRenderer } from "@/components/dynamic-field-renderer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,6 +36,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Plus,
   Phone,
   FileText,
@@ -45,6 +56,8 @@ import {
   Star,
   HelpCircle,
   Target,
+  Check,
+  Clock,
 } from "lucide-react"
 import {
   segmentOptions,
@@ -73,6 +86,14 @@ function timeSince(timestamp: string): string {
 
 const validObjectiveVerbs = ["Confirm", "Disqualify", "Book", "Identify", "Test"]
 
+const taskTypeLabels: Record<string, string> = {
+  call_back: "Call",
+  follow_up: "Follow up",
+  meeting: "Meeting",
+  email: "Email",
+  custom: "Task",
+}
+
 interface LeadDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -95,6 +116,9 @@ export function LeadDrawer({
   onCall,
 }: LeadDrawerProps) {
   const { toast } = useToast()
+  const { stages } = usePipelineStages()
+  const { fields: fieldDefinitions } = useFieldDefinitions("lead")
+  const { tasks, completeTask } = useTasks({ leadId: lead?.id })
   const [isEditing, setIsEditing] = useState(false)
   const [editedLead, setEditedLead] = useState<Lead | null>(null)
   const [isAddContactOpen, setIsAddContactOpen] = useState(false)
@@ -103,7 +127,6 @@ export function LeadDrawer({
   // Sync editedLead when lead changes
   const currentLead = editedLead && editedLead.id === lead?.id ? editedLead : lead
   if (lead && (!editedLead || editedLead.id !== lead.id)) {
-    // Use microtask to avoid setState during render
     queueMicrotask(() => {
       setEditedLead({ ...lead })
       setIsEditing(false)
@@ -144,6 +167,9 @@ export function LeadDrawer({
         email: editedLead.email,
         address: editedLead.address,
         lead_source: editedLead.leadSource,
+        stage: editedLead.stage,
+        deal_value: editedLead.dealValue ?? null,
+        custom_fields: editedLead.customFields ?? {},
       })
       .eq("id", editedLead.id)
 
@@ -154,6 +180,41 @@ export function LeadDrawer({
 
     onLeadUpdated(editedLead)
     setIsEditing(false)
+  }
+
+  const handleStageChange = async (newStage: string) => {
+    if (!editedLead) return
+    const stage = stages.find((s) => s.name === newStage)
+    const updated = {
+      ...editedLead,
+      stage: newStage,
+      stageChangedAt: new Date().toISOString(),
+      closeProbability: stage?.defaultProbability ?? editedLead.closeProbability,
+    }
+    setEditedLead(updated)
+
+    // Persist immediately (stage changes shouldn't require clicking Save)
+    const supabase = getSupabase()
+    const { error } = await supabase
+      .from("leads")
+      .update({
+        stage: newStage,
+        stage_changed_at: updated.stageChangedAt,
+        close_probability: updated.closeProbability ?? null,
+      })
+      .eq("id", editedLead.id)
+
+    if (!error) {
+      onLeadUpdated(updated)
+    }
+  }
+
+  const handleCustomFieldChange = (fieldKey: string, value: unknown) => {
+    if (!editedLead) return
+    setEditedLead({
+      ...editedLead,
+      customFields: { ...(editedLead.customFields || {}), [fieldKey]: value },
+    })
   }
 
   const handleAddContact = async () => {
@@ -229,7 +290,25 @@ export function LeadDrawer({
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-xl font-semibold">{ed.company}</h2>
-                <Badge variant="outline" className="mt-1">{ed.segment}</Badge>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline">{ed.segment}</Badge>
+                  {/* Stage selector */}
+                  <Select value={ed.stage || "New"} onValueChange={handleStageChange}>
+                    <SelectTrigger className="h-6 w-auto text-xs gap-1 border-0 px-2" style={{ color: stages.find((s) => s.name === (ed.stage || "New"))?.color }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stages.map((s) => (
+                        <SelectItem key={s.id} value={s.name}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                            {s.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 {ed.phone && onCall && (
@@ -283,6 +362,41 @@ export function LeadDrawer({
                 <Card className="bg-muted/30">
                   <CardContent className="py-4">
                     <p className="text-sm text-muted-foreground text-center">No attempts yet</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* PENDING TASKS */}
+              {tasks.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                      <Clock className="h-4 w-4" />
+                      Pending Tasks ({tasks.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {tasks.map((task) => {
+                        const isOverdue = new Date(task.dueAt) < new Date(new Date().toDateString())
+                        return (
+                          <div key={task.id} className={`flex items-center justify-between p-2 rounded border ${isOverdue ? "border-red-200 bg-red-50" : ""}`}>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">{taskTypeLabels[task.type] ?? task.type}</Badge>
+                                <span className="text-sm">{task.title}</span>
+                              </div>
+                              <span className={`text-xs ${isOverdue ? "text-red-600" : "text-muted-foreground"}`}>
+                                Due: {new Date(task.dueAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => completeTask(task.id)}>
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -484,6 +598,16 @@ export function LeadDrawer({
                     )}
                   </div>
 
+                  {/* Deal Value (pipeline) */}
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Deal Value</Label>
+                    {isEditing ? (
+                      <Input type="number" value={ed.dealValue ?? ""} onChange={(e) => setEditedLead({ ...ed, dealValue: e.target.value ? Number(e.target.value) : undefined })} placeholder="0.00" className="mt-1" />
+                    ) : (
+                      <p className="text-sm mt-1 text-muted-foreground">{ed.dealValue != null ? `$${ed.dealValue.toLocaleString()}` : "-"}</p>
+                    )}
+                  </div>
+
                   <Accordion type="single" collapsible className="w-full">
                     <AccordionItem value="advanced" className="border-none">
                       <AccordionTrigger className="text-xs text-muted-foreground py-2">Advanced</AccordionTrigger>
@@ -508,6 +632,26 @@ export function LeadDrawer({
                   </Accordion>
                 </CardContent>
               </Card>
+
+              {/* CUSTOM FIELDS */}
+              {fieldDefinitions.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Custom Fields</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {fieldDefinitions.map((field) => (
+                      <DynamicFieldRenderer
+                        key={field.id}
+                        field={field}
+                        value={ed.customFields?.[field.fieldKey] ?? null}
+                        onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
+                        readOnly={!isEditing}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* CONTACTS */}
               <Card>
