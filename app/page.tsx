@@ -37,7 +37,7 @@ type ViewMode = "table" | "kanban"
 
 export default function LeadsPage() {
   const { toast } = useToast()
-  const { leads, setLeads, loading: leadsLoading, refetch: refetchLeads } = useLeads()
+  const { leads, setLeads, loading: leadsLoading } = useLeads()
   const { attempts, setAttempts, loading: attemptsLoading } = useAttempts()
   const { stages } = usePipelineStages()
   const { tasks, completeTask } = useTasks()
@@ -111,8 +111,8 @@ export default function LeadsPage() {
   }
 
   const handleLeadUpdated = (updated: Lead) => {
-    setLeads(leads.map((l) => (l.id === updated.id ? updated : l)))
-    setSelectedLead(updated)
+    setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+    setSelectedLead((prev) => (prev?.id === updated.id ? updated : prev))
   }
 
   const handleAttemptLogged = (attempt: Attempt) => {
@@ -223,7 +223,7 @@ export default function LeadsPage() {
             stages={stages}
             attempts={attempts}
             onSelectLead={openLeadDrawer}
-            onLeadsChanged={refetchLeads}
+            onLeadUpdated={handleLeadUpdated}
           />
         )}
 

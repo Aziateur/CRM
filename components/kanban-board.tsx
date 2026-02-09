@@ -15,10 +15,10 @@ interface KanbanBoardProps {
   stages: PipelineStage[]
   attempts: Attempt[]
   onSelectLead: (lead: LeadWithDerived) => void
-  onLeadsChanged: () => void
+  onLeadUpdated: (lead: LeadWithDerived) => void
 }
 
-export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadsChanged }: KanbanBoardProps) {
+export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadUpdated }: KanbanBoardProps) {
   const { toast } = useToast()
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
@@ -64,6 +64,17 @@ export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadsChan
     if (currentStage === stageName) return
 
     const stage = stages.find((s) => s.name === stageName)
+    const stageChangedAt = new Date().toISOString()
+    const closeProbability = stage?.defaultProbability ?? lead.closeProbability
+
+    // Optimistic update — move card immediately
+    const updatedLead: LeadWithDerived = {
+      ...lead,
+      stage: stageName,
+      stageChangedAt,
+      closeProbability,
+    }
+    onLeadUpdated(updatedLead)
 
     try {
       const supabase = getSupabase()
@@ -71,18 +82,17 @@ export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadsChan
         .from("leads")
         .update({
           stage: stageName,
-          stage_changed_at: new Date().toISOString(),
-          close_probability: stage?.defaultProbability ?? null,
+          stage_changed_at: stageChangedAt,
+          close_probability: closeProbability ?? null,
         })
         .eq("id", leadId)
 
       if (error) {
+        onLeadUpdated(lead) // revert on failure
         toast({ variant: "destructive", title: "Failed to move lead", description: error.message })
-        return
       }
-
-      onLeadsChanged()
     } catch {
+      onLeadUpdated(lead) // revert on failure
       toast({ variant: "destructive", title: "Failed to move lead" })
     }
   }
