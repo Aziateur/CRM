@@ -1,131 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
-import { FieldEditor } from "@/components/field-editor"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, RefreshCw } from "lucide-react"
-
-interface DiagCheck {
-  status: "pending" | "success" | "error"
-  details?: Record<string, string>
-  message?: string
-  mode?: string
-}
-
-function StatusIcon({ status }: { status: string }) {
-  if (status === "success") return <CheckCircle2 className="h-5 w-5 text-green-500" />
-  if (status === "error") return <XCircle className="h-5 w-5 text-red-500" />
-  return <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-}
-
-function SystemDiagnostics() {
-  const [checks, setChecks] = useState<Record<string, DiagCheck>>({
-    env: { status: "pending", details: {} },
-    supabase: { status: "pending", message: "" },
-    browser: { status: "pending", details: {} },
-  })
-
-  const runDiagnostics = async () => {
-    setChecks({
-      env: { status: "pending", details: {} },
-      supabase: { status: "pending", message: "" },
-      browser: { status: "pending", details: {} },
-    })
-
-    const envVars = {
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    }
-    const envStatus = envVars.NEXT_PUBLIC_SUPABASE_URL && envVars.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "success" : "error"
-
-    let sbStatus: "success" | "error" = "error"
-    let sbMessage = ""
-    try {
-      const supabase = getSupabase()
-      const { error } = await supabase.from("leads").select("count").limit(1)
-      if (error) {
-        sbMessage = `Error ${error.code}: ${error.message}`
-      } else {
-        sbStatus = "success"
-        sbMessage = "Connected successfully"
-      }
-    } catch (e) {
-      sbMessage = `Client Init Failed: ${e instanceof Error ? e.message : "Unknown error"}`
-    }
-
-    setChecks({
-      env: {
-        status: envStatus as "success" | "error",
-        details: {
-          url: envVars.NEXT_PUBLIC_SUPABASE_URL ? "Set" : "MISSING",
-          key: envVars.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "Set" : "MISSING",
-        },
-      },
-      supabase: { status: sbStatus, message: sbMessage },
-      browser: {
-        status: "success",
-        details: {
-          online: navigator.onLine ? "Yes" : "No",
-          cookies: navigator.cookieEnabled ? "Enabled" : "Disabled",
-        },
-      },
-    })
-  }
-
-  useEffect(() => {
-    runDiagnostics()
-  }, [])
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">System Diagnostics</CardTitle>
-          <Button onClick={runDiagnostics} variant="outline" size="sm">
-            <RefreshCw className="mr-1 h-3 w-3" /> Re-run
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Env Vars */}
-        <div className="flex items-center justify-between p-3 rounded-lg border">
-          <div>
-            <p className="text-sm font-medium">Environment Variables</p>
-            <p className="text-xs text-muted-foreground">
-              Supabase URL: {checks.env.details?.url} &middot; Anon Key: {checks.env.details?.key}
-            </p>
-          </div>
-          <StatusIcon status={checks.env.status} />
-        </div>
-
-        {/* Supabase */}
-        <div className="flex items-center justify-between p-3 rounded-lg border">
-          <div>
-            <p className="text-sm font-medium">Supabase Connection</p>
-            <p className="text-xs text-muted-foreground">{checks.supabase.message || "Checking..."}</p>
-          </div>
-          <StatusIcon status={checks.supabase.status} />
-        </div>
-
-        {/* Browser */}
-        <div className="flex items-center justify-between p-3 rounded-lg border">
-          <div>
-            <p className="text-sm font-medium">Browser</p>
-            <p className="text-xs text-muted-foreground">
-              Online: {checks.browser.details?.online ?? "..."} &middot; Cookies: {checks.browser.details?.cookies ?? "..."}
-            </p>
-          </div>
-          <StatusIcon status={checks.browser.status} />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Phone, ExternalLink, Database, Cloud } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 export default function DevToolsPage() {
+  const webhookUrl = "https://ali-auto-cyberbellum.app.n8n.cloud/webhook/openphone"
+
   return (
     <div className="flex flex-col min-h-screen">
       <Topbar title="Dev Tools" />
@@ -133,12 +16,133 @@ export default function DevToolsPage() {
       <div className="flex-1 p-6 max-w-3xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight">Dev Tools</h1>
-          <p className="text-muted-foreground">Custom fields, diagnostics, and admin utilities</p>
+          <p className="text-muted-foreground">Integration status and developer reference</p>
         </div>
 
         <div className="space-y-6">
-          <FieldEditor />
-          <SystemDiagnostics />
+          {/* Integration Architecture */}
+          <Alert>
+            <Database className="h-4 w-4" />
+            <AlertTitle>How integrations work</AlertTitle>
+            <AlertDescription>
+              This is a static SPA — there are no API routes. OpenPhone sends webhooks to n8n,
+              which writes to Supabase. The frontend reads from Supabase.
+            </AlertDescription>
+          </Alert>
+
+          {/* OpenPhone */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Phone className="h-5 w-5" />
+                OpenPhone
+              </CardTitle>
+              <CardDescription>
+                VoIP provider — calls, recordings, and transcripts flow through n8n webhooks.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-green-700 border-green-300">Active</Badge>
+                <span className="text-sm text-muted-foreground">Webhooks configured in OpenPhone dashboard</span>
+              </div>
+              <div className="text-sm space-y-2">
+                <p><span className="font-medium">Events subscribed:</span> call.completed, call.recording.completed, call.transcript.completed</p>
+                <p>
+                  <span className="font-medium">Webhook URL:</span>{" "}
+                  <code className="bg-muted px-2 py-0.5 rounded text-xs">{webhookUrl}</code>
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Manage in{" "}
+                <a
+                  href="https://app.openphone.com/settings/api"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  OpenPhone Settings <ExternalLink className="h-3 w-3" />
+                </a>
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* n8n */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+                n8n Workflow Automation
+              </CardTitle>
+              <CardDescription>
+                Processes OpenPhone webhooks and writes to Supabase.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-green-700 border-green-300">Active</Badge>
+                <span className="text-sm text-muted-foreground">1 workflow running</span>
+              </div>
+              <div className="text-sm space-y-1">
+                <p><span className="font-medium">Workflow:</span> OpenPhone Call Event Processor with Database Logging</p>
+                <p><span className="font-medium">Flow:</span> Webhook → Log event → Route by type → Upsert call session / Save artifacts</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Manage at{" "}
+                <a
+                  href="https://ali-auto-cyberbellum.app.n8n.cloud"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  n8n Dashboard <ExternalLink className="h-3 w-3" />
+                </a>
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Supabase */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Supabase (PostgreSQL)
+              </CardTitle>
+              <CardDescription>
+                Database for leads, attempts, call sessions, and webhook events.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-green-700 border-green-300">Connected</Badge>
+                <span className="text-sm text-muted-foreground">Client-side queries via anon key</span>
+              </div>
+              <div className="text-sm space-y-1">
+                <p><span className="font-medium">Key tables:</span> leads, attempts, call_sessions, webhook_events</p>
+                <p><span className="font-medium">Key views:</span> v_attempts_enriched, v_calls_with_artifacts</p>
+                <p><span className="font-medium">Trigger:</span> merge_call_session (deduplicates frontend + n8n rows)</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cloudflare */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cloud className="h-5 w-5" />
+                Cloudflare Pages
+              </CardTitle>
+              <CardDescription>
+                Static hosting — auto-deploys on git push.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="text-sm space-y-1">
+                <p><span className="font-medium">Production:</span> crm-4z1.pages.dev (main branch)</p>
+                <p><span className="font-medium">Sandbox:</span> crm-sandbox.pages.dev (sandbox branch)</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
