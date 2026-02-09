@@ -10,8 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { Lead, Attempt, AttemptOutcome, DerivedStage, DerivedStatus } from "@/lib/store"
-import { getDerivedStage, getDerivedStatus } from "@/lib/store"
+import type { Lead, Attempt, AttemptOutcome, DerivedStage, DerivedStatus, PipelineStage, FieldDefinition } from "@/lib/store"
+import { getDerivedStage, getDerivedStatus, getEffectiveStage } from "@/lib/store"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const getOutcomeColor = (outcome: AttemptOutcome) => {
@@ -51,7 +51,15 @@ export function deriveLeadFields(lead: Lead, attempts: Attempt[]): LeadWithDeriv
 interface LeadsTableProps {
   leads: LeadWithDerived[]
   loading?: boolean
+  stages?: PipelineStage[]
+  attempts?: Attempt[]
+  fieldDefinitions?: FieldDefinition[]
   onSelectLead: (lead: LeadWithDerived) => void
+}
+
+function getStageColor(stageName: string, stages: PipelineStage[]): string {
+  const stage = stages.find((s) => s.name === stageName)
+  return stage?.color ?? "#6b7280"
 }
 
 function TableSkeleton() {
@@ -62,6 +70,7 @@ function TableSkeleton() {
           <Skeleton className="h-5 w-40" />
           <Skeleton className="h-5 w-28" />
           <Skeleton className="h-5 w-20" />
+          <Skeleton className="h-5 w-20" />
           <Skeleton className="h-5 w-32" />
           <Skeleton className="h-5 w-24" />
         </div>
@@ -70,7 +79,10 @@ function TableSkeleton() {
   )
 }
 
-export function LeadsTable({ leads, loading, onSelectLead }: LeadsTableProps) {
+export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDefinitions = [], onSelectLead }: LeadsTableProps) {
+  // Show up to 3 custom field columns
+  const visibleFields = fieldDefinitions.slice(0, 3)
+
   if (loading) {
     return (
       <div className="rounded-md border p-4">
@@ -80,62 +92,90 @@ export function LeadsTable({ leads, loading, onSelectLead }: LeadsTableProps) {
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-[200px]">Company</TableHead>
             <TableHead className="w-[140px]">Phone</TableHead>
+            <TableHead>Stage</TableHead>
             <TableHead>Segment</TableHead>
             <TableHead>Last Outcome</TableHead>
             <TableHead>Next Action</TableHead>
+            {visibleFields.map((f) => (
+              <TableHead key={f.id}>{f.fieldLabel}</TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {leads.map((lead) => (
-            <TableRow
-              key={lead.id}
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => onSelectLead(lead)}
-            >
-              <TableCell className="font-medium">{lead.company}</TableCell>
-              <TableCell>
-                {lead.phone ? (
-                  <a
-                    href={`tel:${lead.phone}`}
-                    className="flex items-center gap-1 text-primary hover:underline"
-                    onClick={(e) => e.stopPropagation()}
+          {leads.map((lead) => {
+            const effectiveStage = getEffectiveStage(lead, attempts)
+            const stageColor = getStageColor(effectiveStage, stages)
+
+            return (
+              <TableRow
+                key={lead.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => onSelectLead(lead)}
+              >
+                <TableCell className="font-medium">{lead.company}</TableCell>
+                <TableCell>
+                  {lead.phone ? (
+                    <a
+                      href={`tel:${lead.phone}`}
+                      className="flex items-center gap-1 text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Phone className="h-3 w-3" />
+                      {lead.phone}
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="secondary"
+                    className="text-xs"
+                    style={{ backgroundColor: `${stageColor}20`, color: stageColor, borderColor: stageColor }}
                   >
-                    <Phone className="h-3 w-3" />
-                    {lead.phone}
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">{lead.segment}</Badge>
-              </TableCell>
-              <TableCell>
-                {lead.lastAttempt ? (
-                  <Badge className={getOutcomeColor(lead.lastAttempt.outcome)} variant="secondary">
-                    {lead.lastAttempt.outcome}
+                    {effectiveStage}
                   </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-muted-foreground">
-                    New
-                  </Badge>
-                )}
-              </TableCell>
-              <TableCell>
-                {lead.lastAttempt ? (
-                  <span className="text-sm">{lead.lastAttempt.nextAction}</span>
-                ) : (
-                  <span className="text-sm text-muted-foreground">Call</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{lead.segment}</Badge>
+                </TableCell>
+                <TableCell>
+                  {lead.lastAttempt ? (
+                    <Badge className={getOutcomeColor(lead.lastAttempt.outcome)} variant="secondary">
+                      {lead.lastAttempt.outcome}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      New
+                    </Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {lead.lastAttempt ? (
+                    <span className="text-sm">{lead.lastAttempt.nextAction}</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">Call</span>
+                  )}
+                </TableCell>
+                {visibleFields.map((f) => {
+                  const val = lead.customFields?.[f.fieldKey]
+                  return (
+                    <TableCell key={f.id}>
+                      <span className="text-sm text-muted-foreground">
+                        {val != null ? String(val) : "-"}
+                      </span>
+                    </TableCell>
+                  )
+                })}
+              </TableRow>
+            )
+          })}
         </TableBody>
       </Table>
     </div>

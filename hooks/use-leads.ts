@@ -24,6 +24,13 @@ export function mapLeadRow(l: Record<string, unknown>): Lead {
     email: l.email as string | undefined,
     address: l.address as string | undefined,
     leadSource: (l.lead_source || l.leadSource) as string | undefined,
+    // Pipeline
+    stage: (l.stage as string | undefined),
+    stageChangedAt: (l.stage_changed_at || l.stageChangedAt) as string | undefined,
+    dealValue: (l.deal_value ?? l.dealValue) as number | undefined,
+    closeProbability: (l.close_probability ?? l.closeProbability) as number | undefined,
+    // Custom fields
+    customFields: (l.custom_fields || l.customFields || {}) as Record<string, unknown>,
     contacts: ((l.contacts || []) as Record<string, unknown>[]).map((c): Contact => ({
       id: c.id as string,
       name: c.name as string,

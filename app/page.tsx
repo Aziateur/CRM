@@ -6,11 +6,17 @@ import { useToast } from "@/hooks/use-toast"
 import { Topbar } from "@/components/topbar"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
+import { usePipelineStages } from "@/hooks/use-pipeline-stages"
+import { useTasks } from "@/hooks/use-tasks"
+import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { LeadsTable, deriveLeadFields, type LeadWithDerived } from "@/components/leads-table"
+import { KanbanBoard } from "@/components/kanban-board"
+import { TasksDashboard } from "@/components/tasks-dashboard"
 import { LeadDrawer } from "@/components/lead-drawer"
 import { LogAttemptModal } from "@/components/log-attempt-modal"
 import { AttemptDetailModal } from "@/components/attempt-detail-modal"
 import { AddLeadDialog } from "@/components/add-lead-dialog"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
@@ -21,18 +27,29 @@ import {
 import {
   segmentOptions,
   attemptOutcomeOptions,
+  getEffectiveStage,
   type Lead,
   type Attempt,
 } from "@/lib/store"
+import { LayoutGrid, Table2 } from "lucide-react"
+
+type ViewMode = "table" | "kanban"
 
 export default function LeadsPage() {
   const { toast } = useToast()
-  const { leads, setLeads, loading: leadsLoading } = useLeads()
+  const { leads, setLeads, loading: leadsLoading, refetch: refetchLeads } = useLeads()
   const { attempts, setAttempts, loading: attemptsLoading } = useAttempts()
+  const { stages } = usePipelineStages()
+  const { tasks, completeTask } = useTasks()
+  const { fields: fieldDefinitions } = useFieldDefinitions("lead")
+
+  // View mode
+  const [viewMode, setViewMode] = useState<ViewMode>("table")
 
   // Filters
   const [segmentFilter, setSegmentFilter] = useState<string>("all")
   const [outcomeFilter, setOutcomeFilter] = useState<string>("all")
+  const [stageFilter, setStageFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
 
   // Drawer & modal state
@@ -50,13 +67,19 @@ export default function LeadsPage() {
   const filteredLeads = leadsWithDerived.filter((lead) => {
     const matchesSegment = segmentFilter === "all" || lead.segment === segmentFilter
     const matchesOutcome = outcomeFilter === "all" || lead.lastAttempt?.outcome === outcomeFilter
+    const matchesStage = stageFilter === "all" || getEffectiveStage(lead, attempts) === stageFilter
     const matchesSearch = lead.company.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesSegment && matchesOutcome && matchesSearch
+    return matchesSegment && matchesOutcome && matchesStage && matchesSearch
   })
 
   const openLeadDrawer = (lead: LeadWithDerived) => {
     setSelectedLead(lead)
     setIsDrawerOpen(true)
+  }
+
+  const openLeadById = (leadId: string) => {
+    const lead = leadsWithDerived.find((l) => l.id === leadId)
+    if (lead) openLeadDrawer(lead)
   }
 
   const handleCall = async () => {
@@ -109,8 +132,20 @@ export default function LeadsPage() {
       />
 
       <div className="flex-1 p-6">
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-6">
+        {/* Tasks Dashboard */}
+        {tasks.length > 0 && (
+          <div className="mb-6">
+            <TasksDashboard
+              tasks={tasks}
+              leads={leads}
+              onCompleteTask={completeTask}
+              onSelectLead={openLeadById}
+            />
+          </div>
+        )}
+
+        {/* Filters + View Toggle */}
+        <div className="flex flex-wrap items-center gap-3 mb-6">
           <Select value={segmentFilter} onValueChange={setSegmentFilter}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder="Segment" />
@@ -134,9 +169,63 @@ export default function LeadsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select value={stageFilter} onValueChange={setStageFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Stage" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stages</SelectItem>
+              {stages.map((s) => (
+                <SelectItem key={s.id} value={s.name}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                    {s.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="ml-auto flex items-center gap-1 border rounded-lg p-0.5">
+            <Button
+              size="sm"
+              variant={viewMode === "table" ? "default" : "ghost"}
+              className="h-7 px-2"
+              onClick={() => setViewMode("table")}
+            >
+              <Table2 className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "kanban" ? "default" : "ghost"}
+              className="h-7 px-2"
+              onClick={() => setViewMode("kanban")}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        <LeadsTable leads={filteredLeads} loading={loading} onSelectLead={openLeadDrawer} />
+        {/* Main View */}
+        {viewMode === "table" ? (
+          <LeadsTable
+            leads={filteredLeads}
+            loading={loading}
+            stages={stages}
+            attempts={attempts}
+            fieldDefinitions={fieldDefinitions}
+            onSelectLead={openLeadDrawer}
+          />
+        ) : (
+          <KanbanBoard
+            leads={filteredLeads}
+            stages={stages}
+            attempts={attempts}
+            onSelectLead={openLeadDrawer}
+            onLeadsChanged={refetchLeads}
+          />
+        )}
 
         <p className="text-sm text-muted-foreground mt-4">
           Showing {filteredLeads.length} of {leads.length} leads

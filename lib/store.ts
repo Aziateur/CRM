@@ -78,6 +78,92 @@ export type RuleConfidence = "Low" | "Likely" | "Proven"
 export type DrillTriggerType = "trust" | "value" | "access" | "execution" | "closing"
 
 // ============================================================================
+// PIPELINE STAGES
+// ============================================================================
+
+export interface PipelineStage {
+  id: string
+  name: string
+  position: number
+  defaultProbability: number
+  color: string
+  isWon: boolean
+  isLost: boolean
+}
+
+export const DEFAULT_PIPELINE_STAGES: PipelineStage[] = [
+  { id: "default-new", name: "New", position: 0, defaultProbability: 0, color: "#6b7280", isWon: false, isLost: false },
+  { id: "default-contacted", name: "Contacted", position: 1, defaultProbability: 10, color: "#3b82f6", isWon: false, isLost: false },
+  { id: "default-interested", name: "Interested", position: 2, defaultProbability: 30, color: "#8b5cf6", isWon: false, isLost: false },
+  { id: "default-meeting", name: "Meeting Booked", position: 3, defaultProbability: 60, color: "#f59e0b", isWon: false, isLost: false },
+  { id: "default-won", name: "Won", position: 4, defaultProbability: 100, color: "#22c55e", isWon: true, isLost: false },
+  { id: "default-lost", name: "Lost", position: 5, defaultProbability: 0, color: "#ef4444", isWon: false, isLost: true },
+]
+
+// ============================================================================
+// TASKS
+// ============================================================================
+
+export type TaskType = "call_back" | "follow_up" | "meeting" | "email" | "custom"
+export type TaskPriority = "low" | "normal" | "high"
+
+export interface Task {
+  id: string
+  leadId: string
+  contactId?: string
+  attemptId?: string
+  type: TaskType
+  title: string
+  description?: string
+  dueAt: string
+  completedAt?: string
+  priority: TaskPriority
+  createdAt: string
+}
+
+export function getDefaultTaskForOutcome(
+  outcome: AttemptOutcome,
+  why: WhyReason | undefined,
+  companyName: string
+): { type: TaskType; title: string; dueDays: number } | null {
+  switch (outcome) {
+    case "No connect":
+      return { type: "call_back", title: `Call back ${companyName}`, dueDays: 1 }
+    case "Gatekeeper only":
+      return { type: "call_back", title: `Call back ${companyName}`, dueDays: 1 }
+    case "DM reached → No interest":
+      if (why === "Timing" || why === "Money") {
+        return { type: "follow_up", title: `Follow up with ${companyName}`, dueDays: 14 }
+      }
+      return null // Targeting/Value/Trust → Drop, no task
+    case "DM reached → Some interest":
+      return { type: "follow_up", title: `Follow up with ${companyName}`, dueDays: 2 }
+    case "Meeting set":
+      return { type: "meeting", title: `Prepare for meeting with ${companyName}`, dueDays: 1 }
+    default:
+      return null
+  }
+}
+
+// ============================================================================
+// CUSTOM FIELDS
+// ============================================================================
+
+export type FieldType = "text" | "number" | "select" | "multi_select" | "date" | "boolean" | "url" | "email"
+
+export interface FieldDefinition {
+  id: string
+  entityType: string
+  fieldKey: string
+  fieldLabel: string
+  fieldType: FieldType
+  options?: string[]
+  isRequired: boolean
+  position: number
+  createdAt: string
+}
+
+// ============================================================================
 // INTERFACES
 // ============================================================================
 
@@ -128,6 +214,13 @@ export interface Lead {
   email?: string
   address?: string
   leadSource?: string
+  // Pipeline
+  stage?: string
+  stageChangedAt?: string
+  dealValue?: number
+  closeProbability?: number
+  // Custom fields (JSONB)
+  customFields?: Record<string, unknown>
   // Contacts
   contacts: Contact[]
   createdAt: string
@@ -388,6 +481,25 @@ export function getDerivedStatus(attempts: Attempt[]): DerivedStatus {
       return "Meeting booked"
     default:
       return "New"
+  }
+}
+
+// Get effective stage: explicit lead.stage if set, otherwise computed from attempts
+export function getEffectiveStage(lead: Lead, attempts: Attempt[]): string {
+  if (lead.stage && lead.stage !== "New") return lead.stage
+  const leadAttempts = attempts
+    .filter((a) => a.leadId === lead.id)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  if (leadAttempts.length === 0) return lead.stage || "New"
+  // Auto-derive from attempts if stage is still default
+  const derived = getDerivedStage(leadAttempts)
+  switch (derived) {
+    case "Not Contacted": return "New"
+    case "Contacted": return "Contacted"
+    case "Meeting": return "Meeting Booked"
+    case "Won": return "Won"
+    case "Lost": return "Lost"
+    default: return lead.stage || "New"
   }
 }
 
