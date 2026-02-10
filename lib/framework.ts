@@ -1,4 +1,4 @@
-// Framework config — Modes + Levers + Signals
+// Framework config v3 — Phases + Markers + Levers
 // Stored in localStorage. No DB tables needed.
 
 import { startOfWeek, startOfDay, subDays, differenceInCalendarDays } from "date-fns"
@@ -7,40 +7,57 @@ import { startOfWeek, startOfDay, subDays, differenceInCalendarDays } from "date
 // Types
 // ---------------------------------------------------------------------------
 
-export interface Lever {
-  key: string    // stable, e.g. "call.framing"
-  label: string  // editable display name
-  prompt?: string // optional 1-line coaching reminder
+export interface Marker {
+  key: string       // stable id, e.g. "focus_practiced"
+  label: string     // user-editable display name
+  definition?: string // what does marking Y mean? (shown in logger tooltip)
 }
 
-export type GoalCounterKey =
-  | "focus_practiced"
-  | "new_truth_gained"
-  | "meetings_set"
-  | "icp_validated"
+export interface Lever {
+  key: string       // stable, e.g. "call.framing"
+  label: string     // editable display name
+  prompt?: string   // optional 1-line coaching reminder
+}
 
+export type TargetMetric = "reps" | "practice" | "translation" | "outcome_meetings"
 export type GoalPeriod = "iso_week" | "rolling_7" | "today"
 
 export interface Phase {
   key: string
   label: string
-  goalCounterKey: GoalCounterKey
+  // The 3 sentences — what the user reads
+  why: string       // what bottleneck / constraint hypothesis
+  do_: string       // what to do each call (the lever in plain language)
+  win: string       // what counts as progress this week (definition)
+  // Wiring
+  focusLeverKey: string
+  practiceMarkerKey?: string    // optional — omit for pure outcome phases
+  translationMarkerKey?: string // optional — omit for pure practice phases
+  // Goal
+  targetMetric: TargetMetric
   target: number
   period: GoalPeriod
-  focusLeverKey: string
-  prompts?: string[] // max 2 coaching lines shown during dialing
+  // Optional
+  exitCriteria?: string // when to switch phases (user-authored text)
 }
 
 export interface Framework {
-  version: 2
+  version: 3
   activePhaseKey: string
   phases: Phase[]
+  markers: Marker[]
   levers: Lever[]
+  signalsStartedAt?: string // ISO — so we know older calls are unscored
 }
 
 // ---------------------------------------------------------------------------
 // Default seed
 // ---------------------------------------------------------------------------
+
+const DEFAULT_MARKERS: Marker[] = [
+  { key: "focus_practiced", label: "Focus practiced", definition: "Did I consciously practice the focus skill on this call?" },
+  { key: "new_truth_gained", label: "New truth gained", definition: "Did I learn something new about the prospect's real situation?" },
+]
 
 const DEFAULT_LEVERS: Lever[] = [
   { key: "call.framing", label: "Framing & Positioning", prompt: "Lead with their world, not your pitch" },
@@ -54,55 +71,145 @@ const DEFAULT_PHASES: Phase[] = [
   {
     key: "call_quality",
     label: "Call Quality",
-    goalCounterKey: "focus_practiced",
+    why: "My calls aren't converting — I need better execution",
+    do_: "Practice the focus skill consciously on every call",
+    win: "High practice rate with truth gained on most connects",
+    focusLeverKey: "call.framing",
+    practiceMarkerKey: "focus_practiced",
+    translationMarkerKey: "new_truth_gained",
+    targetMetric: "reps",
     target: 40,
     period: "iso_week",
-    focusLeverKey: "call.framing",
-    prompts: ["Focus on one skill per session", "Rate honestly — no one sees this but you"],
+    exitCriteria: "Practice rate > 80% for two weeks and truth rate climbing",
   },
   {
     key: "market_intel",
     label: "Market Intel",
-    goalCounterKey: "new_truth_gained",
+    why: "I don't understand enough about prospects' real situation",
+    do_: "Ask one question I don't know the answer to on every call",
+    win: "Learn something new on every connected call",
+    focusLeverKey: "call.curiosity",
+    practiceMarkerKey: "focus_practiced",
+    translationMarkerKey: "new_truth_gained",
+    targetMetric: "translation",
     target: 25,
     period: "iso_week",
-    focusLeverKey: "call.curiosity",
-    prompts: ["Map pain owner, workflow, trigger, decision process", "Every call is a research call"],
-  },
-  {
-    key: "lead_quality",
-    label: "Lead Quality",
-    goalCounterKey: "icp_validated",
-    target: 20,
-    period: "iso_week",
-    focusLeverKey: "call.qualify",
-    prompts: ["Confirm ICP fit within first 30 seconds", "Wrong list = wasted effort"],
+    exitCriteria: "Truth gained rate consistently above 60% of connects",
   },
   {
     key: "booking",
     label: "Book Meetings",
-    goalCounterKey: "meetings_set",
+    why: "I'm connecting but not converting to meetings",
+    do_: "Ask for the meeting explicitly on every qualified call",
+    win: "Book meetings at a sustainable rate",
+    focusLeverKey: "call.framing",
+    practiceMarkerKey: "focus_practiced",
+    targetMetric: "outcome_meetings",
     target: 8,
     period: "iso_week",
-    focusLeverKey: "call.framing",
-    prompts: ["Ask for the meeting", "Don't leave without a clear next step"],
+    exitCriteria: "Booking rate above 10% of DM connects for 2 weeks",
   },
 ]
 
 export const DEFAULT_FRAMEWORK: Framework = {
-  version: 2,
+  version: 3,
   activePhaseKey: "call_quality",
   phases: DEFAULT_PHASES,
+  markers: DEFAULT_MARKERS,
   levers: DEFAULT_LEVERS,
+  signalsStartedAt: new Date().toISOString(),
 }
 
 // ---------------------------------------------------------------------------
 // Storage keys
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = "crm_framework_v2"
+const STORAGE_KEY = "crm_framework_v3"
 const BACKUP_KEY = "crm_framework_backup"
-const OLD_KEY = "crm_mission_control" // v1 — migrate once
+const V2_KEY = "crm_framework_v2"
+const V1_KEY = "crm_mission_control"
+
+// ---------------------------------------------------------------------------
+// v2 → v3 migration
+// ---------------------------------------------------------------------------
+
+interface V2Phase {
+  key: string
+  label: string
+  goalCounterKey: string
+  target: number
+  period: GoalPeriod
+  focusLeverKey: string
+  prompts?: string[]
+}
+
+interface V2Framework {
+  version: 2
+  activePhaseKey: string
+  phases: V2Phase[]
+  levers: Lever[]
+}
+
+function migrateV2toV3(v2: V2Framework): Framework {
+  const whyDoWinDefaults: Record<string, { why: string; do_: string; win: string }> = {
+    call_quality: {
+      why: "My calls aren't converting — I need better execution",
+      do_: "Practice the focus skill consciously on every call",
+      win: "High practice rate with truth gained on most connects",
+    },
+    market_intel: {
+      why: "I don't understand enough about prospects' real situation",
+      do_: "Ask one question I don't know the answer to on every call",
+      win: "Learn something new on every connected call",
+    },
+    lead_quality: {
+      why: "I might be calling the wrong people",
+      do_: "Qualify ICP fit within the first 30 seconds",
+      win: "Confirm or disqualify quickly — no wasted pitches",
+    },
+    booking: {
+      why: "I'm connecting but not converting to meetings",
+      do_: "Ask for the meeting explicitly on every qualified call",
+      win: "Book meetings at a sustainable rate",
+    },
+  }
+
+  const counterToTargetMetric = (counter: string): TargetMetric => {
+    if (counter === "meetings_set") return "outcome_meetings"
+    if (counter === "new_truth_gained") return "translation"
+    return "reps"
+  }
+
+  const phases: Phase[] = v2.phases.map(p => {
+    const defaults = whyDoWinDefaults[p.key] || {
+      why: `Working on ${p.label}`,
+      do_: p.prompts?.[0] || "Focus on the skill",
+      win: `Hit ${p.target} ${p.label.toLowerCase()} this week`,
+    }
+    return {
+      key: p.key,
+      label: p.label,
+      why: defaults.why,
+      do_: defaults.do_,
+      win: defaults.win,
+      focusLeverKey: p.focusLeverKey,
+      practiceMarkerKey: "focus_practiced",
+      translationMarkerKey: p.goalCounterKey === "meetings_set" ? undefined : "new_truth_gained",
+      targetMetric: counterToTargetMetric(p.goalCounterKey),
+      target: p.target,
+      period: p.period,
+    }
+  })
+
+  return {
+    version: 3,
+    activePhaseKey: v2.activePhaseKey,
+    phases,
+    markers: [...DEFAULT_MARKERS],
+    levers: v2.levers.map(l => ({ key: l.key, label: l.label, prompt: l.prompt })),
+    signalsStartedAt: new Date().toISOString(),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Read / Write
@@ -111,35 +218,32 @@ const OLD_KEY = "crm_mission_control" // v1 — migrate once
 export function getFramework(): Framework {
   if (typeof window === "undefined") return DEFAULT_FRAMEWORK
   try {
+    // Try v3 first
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (parsed && parsed.version === 2 && Array.isArray(parsed.phases) && Array.isArray(parsed.levers)) {
+      if (parsed?.version === 3 && Array.isArray(parsed.phases)) {
         return parsed as Framework
       }
     }
-    // Attempt migration from v1
-    const old = localStorage.getItem(OLD_KEY)
-    if (old) {
-      // v1 had period, goalMetric, target — map to a single phase override
+
+    // Try v2 migration
+    const v2Raw = localStorage.getItem(V2_KEY)
+    if (v2Raw) {
       try {
-        const v1 = JSON.parse(old)
-        const fw = structuredClone(DEFAULT_FRAMEWORK)
-        // Preserve target on the booking phase if v1 was tracking meetings
-        if (v1.goalMetric?.type === "attempt_outcome" && typeof v1.target === "number") {
-          const booking = fw.phases.find(p => p.key === "booking")
-          if (booking) booking.target = v1.target
+        const v2 = JSON.parse(v2Raw) as V2Framework
+        if (v2.version === 2 && Array.isArray(v2.phases) && Array.isArray(v2.levers)) {
+          const fw = migrateV2toV3(v2)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(fw))
+          localStorage.removeItem(V2_KEY)
+          return fw
         }
-        if (v1.period) {
-          fw.phases.forEach(p => { p.period = v1.period })
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(fw))
-        localStorage.removeItem(OLD_KEY)
-        return fw
-      } catch {
-        // ignore bad v1
-      }
+      } catch { /* ignore bad v2 */ }
     }
+
+    // Clean up v1 if it exists
+    localStorage.removeItem(V1_KEY)
+
     return DEFAULT_FRAMEWORK
   } catch {
     return DEFAULT_FRAMEWORK
@@ -151,9 +255,10 @@ export function setFramework(next: Framework): { ok: boolean; error?: string } {
   if (typeof window === "undefined") return { ok: false, error: "No window" }
 
   // Validate
-  if (next.version !== 2) return { ok: false, error: "version must be 2" }
-  if (!Array.isArray(next.phases) || next.phases.length === 0) return { ok: false, error: "phases required" }
-  if (!Array.isArray(next.levers) || next.levers.length === 0) return { ok: false, error: "levers required" }
+  if (next.version !== 3) return { ok: false, error: "version must be 3" }
+  if (!Array.isArray(next.phases) || next.phases.length === 0) return { ok: false, error: "At least one phase required" }
+  if (!Array.isArray(next.markers)) return { ok: false, error: "markers array required" }
+  if (!Array.isArray(next.levers) || next.levers.length === 0) return { ok: false, error: "At least one lever required" }
 
   const phaseKeys = new Set(next.phases.map(p => p.key))
   if (phaseKeys.size !== next.phases.length) return { ok: false, error: "Duplicate phase keys" }
@@ -161,12 +266,27 @@ export function setFramework(next: Framework): { ok: boolean; error?: string } {
   const leverKeys = new Set(next.levers.map(l => l.key))
   if (leverKeys.size !== next.levers.length) return { ok: false, error: "Duplicate lever keys" }
 
-  if (!phaseKeys.has(next.activePhaseKey)) return { ok: false, error: `activePhaseKey "${next.activePhaseKey}" not found in phases` }
+  const markerKeys = new Set(next.markers.map(m => m.key))
+  if (markerKeys.size !== next.markers.length) return { ok: false, error: "Duplicate marker keys" }
+
+  if (!phaseKeys.has(next.activePhaseKey)) {
+    return { ok: false, error: `activePhaseKey "${next.activePhaseKey}" not found` }
+  }
 
   for (const p of next.phases) {
-    if (!p.key || !p.label) return { ok: false, error: `Phase missing key or label` }
-    if (!leverKeys.has(p.focusLeverKey)) return { ok: false, error: `Phase "${p.key}" references unknown lever "${p.focusLeverKey}"` }
-    if (typeof p.target !== "number" || p.target < 0) return { ok: false, error: `Phase "${p.key}" target must be >= 0` }
+    if (!p.key || !p.label) return { ok: false, error: "Phase missing key or label" }
+    if (!leverKeys.has(p.focusLeverKey)) {
+      return { ok: false, error: `Phase "${p.label}" references unknown lever "${p.focusLeverKey}"` }
+    }
+    if (p.practiceMarkerKey && !markerKeys.has(p.practiceMarkerKey)) {
+      return { ok: false, error: `Phase "${p.label}" references unknown practice marker "${p.practiceMarkerKey}"` }
+    }
+    if (p.translationMarkerKey && !markerKeys.has(p.translationMarkerKey)) {
+      return { ok: false, error: `Phase "${p.label}" references unknown translation marker "${p.translationMarkerKey}"` }
+    }
+    if (typeof p.target !== "number" || p.target < 0) {
+      return { ok: false, error: `Phase "${p.label}" target must be >= 0` }
+    }
   }
 
   // Backup current
@@ -188,6 +308,11 @@ export function getActivePhase(fw: Framework): Phase {
 export function getActiveFocusLever(fw: Framework): Lever {
   const phase = getActivePhase(fw)
   return fw.levers.find(l => l.key === phase.focusLeverKey) || fw.levers[0]
+}
+
+export function getMarker(fw: Framework, key: string | undefined): Marker | undefined {
+  if (!key) return undefined
+  return fw.markers.find(m => m.key === key)
 }
 
 export function getPeriodRange(period: GoalPeriod): { start: Date; end: Date } {
@@ -217,8 +342,7 @@ export function getPeriodRange(period: GoalPeriod): { start: Date; end: Date } {
 export function getRemainingDays(period: GoalPeriod): number {
   const { end } = getPeriodRange(period)
   const now = new Date()
-  const remaining = differenceInCalendarDays(end, now)
-  return Math.max(remaining, 1)
+  return Math.max(differenceInCalendarDays(end, now), 1)
 }
 
 export function getPeriodTotalDays(period: GoalPeriod): number {
@@ -226,15 +350,6 @@ export function getPeriodTotalDays(period: GoalPeriod): number {
     case "iso_week": return 7
     case "rolling_7": return 7
     case "today": return 1
-  }
-}
-
-export function getGoalLabel(counterKey: GoalCounterKey): string {
-  switch (counterKey) {
-    case "focus_practiced": return "Focus Practiced"
-    case "new_truth_gained": return "Truths Gained"
-    case "meetings_set": return "Meetings Set"
-    case "icp_validated": return "ICP Validated"
   }
 }
 

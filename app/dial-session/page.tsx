@@ -110,10 +110,10 @@ export default function DialSessionPage() {
   const [sessionAttempts, setSessionAttempts] = useState<Attempt[]>([])
 
   // Framework + signals
-  const { activePhase, activeFocusLever } = useFramework()
+  const { activePhase, activeFocusLever, practiceMarker, translationMarker } = useFramework()
   const { toast } = useToast()
-  const [focusPracticed, setFocusPracticed] = useState<boolean | null>(null)
-  const [truthGained, setTruthGained] = useState<boolean | null>(null)
+  const [practiceSignal, setPracticeSignal] = useState<boolean | null>(null)
+  const [translationSignal, setTranslationSignal] = useState<boolean | null>(null)
   const [consecutiveSkips, setConsecutiveSkips] = useState(0)
 
   // Call state
@@ -271,8 +271,8 @@ export default function DialSessionPage() {
     setShowDetail(false)
     setNoteText("")
     // Reset signals
-    setFocusPracticed(null)
-    setTruthGained(null)
+    setPracticeSignal(null)
+    setTranslationSignal(null)
   }
 
   const skipLead = () => {
@@ -331,34 +331,23 @@ export default function DialSessionPage() {
         createdAt: data.created_at,
       }
 
-      // Store signals in localStorage
-      const signalRecorded = focusPracticed !== null || truthGained !== null
-      if (focusPracticed !== null) {
-        setAttemptSignal(attemptId, "focus_practiced", focusPracticed)
-      } else {
-        // Default: No if skipped
-        setAttemptSignal(attemptId, "focus_practiced", false)
+      // Store signals in localStorage — only the phase's markers
+      const signalRecorded = practiceSignal !== null || translationSignal !== null
+      if (activePhase.practiceMarkerKey) {
+        setAttemptSignal(attemptId, activePhase.practiceMarkerKey, practiceSignal ?? false)
       }
-      if (truthGained !== null) {
-        setAttemptSignal(attemptId, "new_truth_gained", truthGained)
-      }
-      // Meetings are counted from outcomes, not signals — but store for completeness
-      if (selectedOutcome === "Meeting set") {
-        setAttemptSignal(attemptId, "meetings_set", true)
-      }
-      // ICP validated signal — mark true if DM was reached (proxy)
-      if (isDmReached(selectedOutcome)) {
-        setAttemptSignal(attemptId, "icp_validated", true)
+      if (activePhase.translationMarkerKey && translationSignal !== null) {
+        setAttemptSignal(attemptId, activePhase.translationMarkerKey, translationSignal)
       }
 
       // Nudge: track consecutive skips
-      if (!signalRecorded) {
+      if (!signalRecorded && activePhase.practiceMarkerKey) {
         const newSkips = consecutiveSkips + 1
         setConsecutiveSkips(newSkips)
         if (newSkips >= 10 && newSkips % 10 === 0) {
           toast({
             title: "No focus marks in 10 calls",
-            description: "Press Y/N in the logger to track your focus practice.",
+            description: "Press Y/N in the logger to track your practice.",
           })
         }
       } else {
@@ -436,14 +425,14 @@ export default function DialSessionPage() {
             setSelectedOutcome(attemptOutcomeOptions[index])
           }
         }
-        // Y/N for focus practiced signal
+        // Y/N for practice signal
         if (e.key === "y" || e.key === "Y") {
           e.preventDefault()
-          setFocusPracticed(true)
+          setPracticeSignal(true)
         }
         if (e.key === "n" || e.key === "N") {
           e.preventDefault()
-          setFocusPracticed(false)
+          setPracticeSignal(false)
         }
         // Enter to save
         if (e.key === "Enter" && canSave) {
@@ -888,61 +877,74 @@ export default function DialSessionPage() {
                     </div>
                   )}
 
-                  {/* Focus signal — Y/N per call */}
+                  {/* Signals — Y/N per call, dynamic from phase markers */}
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Crosshair className="h-3.5 w-3.5 text-primary" />
-                        <Label className="text-sm font-medium">
-                          Focus: {activeFocusLever.label}
-                        </Label>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={focusPracticed === true ? "default" : "outline"}
-                          className={`h-7 w-10 text-xs ${focusPracticed === true ? "" : "bg-transparent"}`}
-                          onClick={() => setFocusPracticed(true)}
-                        >
-                          Y
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={focusPracticed === false ? "default" : "outline"}
-                          className={`h-7 w-10 text-xs ${focusPracticed === false ? "" : "bg-transparent"}`}
-                          onClick={() => setFocusPracticed(false)}
-                        >
-                          N
-                        </Button>
-                      </div>
-                    </div>
-                    {/* Optional second counter: new truth gained */}
-                    {(activePhase.goalCounterKey === "new_truth_gained" ||
-                      activePhase.goalCounterKey === "focus_practiced") && (
+                    {/* Practice marker (if phase has one) */}
+                    {activePhase.practiceMarkerKey && practiceMarker && (
                       <div className="flex items-center justify-between">
-                        <Label className="text-sm text-muted-foreground">New truth gained?</Label>
+                        <div className="flex items-center gap-2">
+                          <Crosshair className="h-3.5 w-3.5 text-primary" />
+                          <Label className="text-sm font-medium">
+                            {practiceMarker.label} (Y/N)
+                          </Label>
+                        </div>
                         <div className="flex gap-1">
                           <Button
                             type="button"
                             size="sm"
-                            variant={truthGained === true ? "default" : "outline"}
-                            className={`h-7 w-10 text-xs ${truthGained === true ? "" : "bg-transparent"}`}
-                            onClick={() => setTruthGained(true)}
+                            variant={practiceSignal === true ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${practiceSignal === true ? "" : "bg-transparent"}`}
+                            onClick={() => setPracticeSignal(true)}
                           >
                             Y
                           </Button>
                           <Button
                             type="button"
                             size="sm"
-                            variant={truthGained === false ? "default" : "outline"}
-                            className={`h-7 w-10 text-xs ${truthGained === false ? "" : "bg-transparent"}`}
-                            onClick={() => setTruthGained(false)}
+                            variant={practiceSignal === false ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${practiceSignal === false ? "" : "bg-transparent"}`}
+                            onClick={() => setPracticeSignal(false)}
                           >
                             N
                           </Button>
                         </div>
+                      </div>
+                    )}
+                    {/* Translation marker (if phase has one) */}
+                    {activePhase.translationMarkerKey && translationMarker && (
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm text-muted-foreground">
+                          {translationMarker.label}?
+                        </Label>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={translationSignal === true ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${translationSignal === true ? "" : "bg-transparent"}`}
+                            onClick={() => setTranslationSignal(true)}
+                          >
+                            Y
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={translationSignal === false ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${translationSignal === false ? "" : "bg-transparent"}`}
+                            onClick={() => setTranslationSignal(false)}
+                          >
+                            N
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {/* Show focus hint if no markers at all */}
+                    {!activePhase.practiceMarkerKey && !activePhase.translationMarkerKey && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
+                        <Crosshair className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">
+                          Focus: {activeFocusLever.label} — no markers for this phase
+                        </span>
                       </div>
                     )}
                   </div>
