@@ -5,8 +5,14 @@ import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { FieldEditor } from "@/components/field-editor"
 import { PipelineEditor } from "@/components/pipeline-editor"
+import { LeadImport } from "@/components/lead-import"
+import { useLeads } from "@/hooks/use-leads"
+import { useAttempts } from "@/hooks/use-attempts"
+import { useFieldDefinitions } from "@/hooks/use-field-definitions"
+import { exportLeadsCSV, exportAttemptsCSV } from "@/lib/csv"
+import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, RefreshCw } from "lucide-react"
+import { CheckCircle2, XCircle, RefreshCw, Download, Upload } from "lucide-react"
 
 interface DiagCheck {
   status: "pending" | "success" | "error"
@@ -117,6 +123,68 @@ function SystemDiagnostics() {
   )
 }
 
+function DataManagement() {
+  const { toast } = useToast()
+  const { leads, setLeads } = useLeads()
+  const { attempts } = useAttempts()
+  const { fields: fieldDefinitions } = useFieldDefinitions("lead")
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Data Management</h3>
+      <div className="border rounded-lg divide-y">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">Import Leads</p>
+            <p className="text-xs text-muted-foreground">Upload a CSV file to bulk-import leads</p>
+          </div>
+          <LeadImport
+            fieldDefinitions={fieldDefinitions}
+            onImported={(imported) => {
+              setLeads((prev) => [...imported, ...prev])
+              toast({ title: `${imported.length} leads imported` })
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">Export Leads</p>
+            <p className="text-xs text-muted-foreground">{leads.length} leads as CSV</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              exportLeadsCSV(leads, attempts, fieldDefinitions)
+              toast({ title: `Exported ${leads.length} leads` })
+            }}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Export
+          </Button>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">Export Call History</p>
+            <p className="text-xs text-muted-foreground">{attempts.length} call attempts as CSV</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              exportAttemptsCSV(attempts, leads)
+              toast({ title: `Exported ${attempts.length} call records` })
+            }}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            Export
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   return (
     <div className="flex flex-col min-h-screen">
@@ -125,12 +193,13 @@ export default function SettingsPage() {
       <div className="flex-1 p-6 max-w-3xl">
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Pipeline, custom fields, and system configuration</p>
+          <p className="text-muted-foreground">Pipeline, custom fields, data management, and system configuration</p>
         </div>
 
         <div className="space-y-10">
           <PipelineEditor />
           <FieldEditor />
+          <DataManagement />
           <SystemDiagnostics />
         </div>
       </div>

@@ -31,9 +31,7 @@ import {
   type Lead,
   type Attempt,
 } from "@/lib/store"
-import { LayoutGrid, Table2, Download, Bookmark, X, Plus } from "lucide-react"
-import { exportLeadsCSV, exportAttemptsCSV } from "@/lib/csv"
-import { LeadImport } from "@/components/lead-import"
+import { LayoutGrid, Table2, Bookmark, X, Plus } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,7 +41,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { useViewPresets, type ViewFilters } from "@/hooks/use-view-presets"
-import { DashboardWidgets } from "@/components/dashboard-widgets"
 import { BulkActionsBar } from "@/components/bulk-actions-bar"
 
 type ViewMode = "table" | "kanban"
@@ -169,13 +166,6 @@ export default function LeadsPage() {
       />
 
       <div className="flex-1 p-6">
-        {/* Dashboard Widgets */}
-        {!loading && (leads.length > 0 || attempts.length > 0) && (
-          <div className="mb-6">
-            <DashboardWidgets leads={leads} attempts={attempts} stages={stages} />
-          </div>
-        )}
-
         {/* Tasks Dashboard */}
         {tasks.length > 0 && (
           <div className="mb-6">
@@ -274,26 +264,6 @@ export default function LeadsPage() {
           </Select>
 
           <div className="ml-auto flex items-center gap-2">
-            <LeadImport
-              fieldDefinitions={fieldDefinitions}
-              onImported={(imported) => setLeads((prev) => [...imported, ...prev])}
-            />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4 mr-1" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => exportLeadsCSV(filteredLeads, attempts, fieldDefinitions)}>
-                  Export Leads ({filteredLeads.length})
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportAttemptsCSV(attempts, leads)}>
-                  Export Call History ({attempts.length})
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
             <div className="flex items-center gap-1 border rounded-lg p-0.5">
               <Button
                 size="sm"
