@@ -1,6 +1,6 @@
 "use client"
 
-import { Users, BookOpen, Settings, BarChart3, Phone, ClipboardList, Wrench } from "lucide-react"
+import { Users, BookOpen, Settings, BarChart3, LayoutDashboard, Phone, ClipboardList, Wrench } from "lucide-react"
 
 import {
   Sidebar,
@@ -23,6 +23,11 @@ const menuItems = [
     title: "Leads",
     url: "/",
     icon: Users,
+  },
+  {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: LayoutDashboard,
   },
   {
     title: "Dial Session",
