@@ -4,13 +4,23 @@ import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 
-export type ActivityType = "note" | "stage_change" | "field_edit" | "created" | "imported"
+export type ActivityType =
+  | "call"
+  | "email"
+  | "sms"
+  | "note"
+  | "stage_change"
+  | "tag_change"
+  | "field_change"
+  | "task_created"
+  | "task_completed"
 
 export interface LeadActivity {
   id: string
   leadId: string
   activityType: ActivityType
-  description: string
+  title: string
+  description?: string
   metadata: Record<string, unknown>
   createdAt: string
 }
@@ -20,7 +30,8 @@ function mapActivityRow(row: Record<string, unknown>): LeadActivity {
     id: row.id as string,
     leadId: (row.lead_id ?? row.leadId) as string,
     activityType: (row.activity_type ?? row.activityType) as ActivityType,
-    description: row.description as string,
+    title: (row.title ?? "") as string,
+    description: (row.description ?? undefined) as string | undefined,
     metadata: (row.metadata ?? {}) as Record<string, unknown>,
     createdAt: (row.created_at ?? row.createdAt ?? new Date().toISOString()) as string,
   }
@@ -78,6 +89,7 @@ export function useLeadActivities(leadId: string | null) {
         .insert([{
           lead_id: leadId,
           activity_type: "note",
+          title: "Note",
           description: text.trim(),
         }])
         .select()
@@ -99,7 +111,7 @@ export function useLeadActivities(leadId: string | null) {
     }
   }, [leadId, toast])
 
-  const logActivity = useCallback(async (type: ActivityType, description: string, metadata?: Record<string, unknown>) => {
+  const logActivity = useCallback(async (type: ActivityType, title: string, description?: string, metadata?: Record<string, unknown>) => {
     if (!leadId) return null
     try {
       const supabase = getSupabase()
@@ -108,7 +120,8 @@ export function useLeadActivities(leadId: string | null) {
         .insert([{
           lead_id: leadId,
           activity_type: type,
-          description,
+          title,
+          description: description ?? null,
           metadata: metadata ?? {},
         }])
         .select()

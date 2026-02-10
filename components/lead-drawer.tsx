@@ -746,13 +746,16 @@ export function LeadDrawer({
                         <div key={activity.id} className="flex gap-3 text-sm">
                           <div className="shrink-0 mt-1">
                             {activity.activityType === "note" && <MessageSquare className="h-3.5 w-3.5 text-blue-500" />}
+                            {activity.activityType === "call" && <Phone className="h-3.5 w-3.5 text-green-500" />}
                             {activity.activityType === "stage_change" && <ChevronRight className="h-3.5 w-3.5 text-amber-500" />}
-                            {activity.activityType === "created" && <Plus className="h-3.5 w-3.5 text-green-500" />}
-                            {activity.activityType === "imported" && <Plus className="h-3.5 w-3.5 text-purple-500" />}
-                            {activity.activityType === "field_edit" && <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />}
+                            {activity.activityType === "tag_change" && <Edit3 className="h-3.5 w-3.5 text-indigo-500" />}
+                            {activity.activityType === "field_change" && <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />}
+                            {activity.activityType === "task_created" && <Clock className="h-3.5 w-3.5 text-blue-500" />}
+                            {activity.activityType === "task_completed" && <Check className="h-3.5 w-3.5 text-green-600" />}
+                            {(activity.activityType === "email" || activity.activityType === "sms") && <Send className="h-3.5 w-3.5 text-muted-foreground" />}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm">{activity.description}</p>
+                            <p className="text-sm">{activity.title || activity.description}</p>
                             <p className="text-xs text-muted-foreground">{timeSince(activity.createdAt)}</p>
                           </div>
                         </div>

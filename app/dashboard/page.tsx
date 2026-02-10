@@ -7,6 +7,7 @@ import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useTasks } from "@/hooks/use-tasks"
 import { useDialSession } from "@/hooks/use-dial-session"
 import { DashboardWidgets } from "@/components/dashboard-widgets"
+import { MissionControl } from "@/components/mission-control"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardPage() {
@@ -33,6 +34,8 @@ export default function DashboardPage() {
             <Skeleton className="h-40 rounded-lg" />
           </div>
         ) : (
+          <>
+          <MissionControl attempts={attempts} tasks={tasks} />
           <DashboardWidgets
             leads={leads}
             attempts={attempts}
@@ -40,6 +43,7 @@ export default function DashboardPage() {
             tasks={tasks}
             sessionStartedAt={session?.status === "active" ? session.startedAt : null}
           />
+          </>
         )}
       </div>
     </div>

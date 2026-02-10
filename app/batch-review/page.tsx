@@ -664,8 +664,8 @@ export default function BatchReviewPage() {
               Reviewed {attemptsToReview.length} attempts, marked {topCount} top and {bottomCount} bottom calls.
             </p>
             <div className="flex gap-2 justify-center">
-              <Button variant="outline" onClick={() => router.push("/knowledge-base")}>
-                View Knowledge Base
+              <Button variant="outline" onClick={() => router.push("/playbook")}>
+                View Playbook
               </Button>
               <Button onClick={() => router.push("/")}>
                 Back to Leads
