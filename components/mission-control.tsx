@@ -38,8 +38,8 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
     framework,
     activePhase,
     activeFocusLever,
-    practiceMarker,
-    translationMarker,
+    actionMarker,
+    winMarker,
     setActivePhase,
     setTarget,
   } = useFramework()
@@ -55,47 +55,47 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
     }
   }, [editingTarget])
 
-  // Compute the scoreboard: reps, practice, translation, goalAchieved
+  // Compute the scoreboard: reps, action count, win count, goalAchieved
   const scoreboard = useMemo(() => {
     const { start, end } = getPeriodRange(activePhase.period)
     const totalDays = getPeriodTotalDays(activePhase.period)
     const remainingDays = getRemainingDays(activePhase.period)
 
-    // Reps = all attempts in period (not filtered by phase)
+    // Calls = all attempts in period (not filtered by phase)
     const periodAttempts = attempts.filter(a => {
       const ts = new Date(a.timestamp)
       return ts >= start && ts < end
     })
-    const reps = periodAttempts.length
+    const calls = periodAttempts.length
     const periodAttemptIds = periodAttempts.map(a => a.id)
 
-    // Practice count (from signals)
-    const practiceCount = activePhase.practiceMarkerKey
-      ? countSignals(periodAttemptIds, activePhase.practiceMarkerKey)
+    // Action count (from signals)
+    const actionCount = activePhase.actionMarkerKey
+      ? countSignals(periodAttemptIds, activePhase.actionMarkerKey)
       : null
 
-    // Translation count (from signals or outcomes)
-    let translationCount: number | null = null
-    if (activePhase.targetMetric === "outcome_meetings") {
-      translationCount = periodAttempts.filter(a => a.outcome === "Meeting set").length
-    } else if (activePhase.translationMarkerKey) {
-      translationCount = countSignals(periodAttemptIds, activePhase.translationMarkerKey)
+    // Win count (from signals or outcomes)
+    let winCount: number | null = null
+    if (activePhase.primaryGoal === "outcome_meetings") {
+      winCount = periodAttempts.filter(a => a.outcome === "Meeting set").length
+    } else if (activePhase.winMarkerKey) {
+      winCount = countSignals(periodAttemptIds, activePhase.winMarkerKey)
     }
 
     // What does the target count?
     let goalAchieved = 0
-    switch (activePhase.targetMetric) {
+    switch (activePhase.primaryGoal) {
       case "reps":
-        goalAchieved = reps
+        goalAchieved = calls
         break
-      case "practice":
-        goalAchieved = practiceCount ?? 0
+      case "action":
+        goalAchieved = actionCount ?? 0
         break
-      case "translation":
-        goalAchieved = translationCount ?? 0
+      case "win":
+        goalAchieved = winCount ?? 0
         break
       case "outcome_meetings":
-        goalAchieved = translationCount ?? 0
+        goalAchieved = winCount ?? 0
         break
     }
 
@@ -113,12 +113,12 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
     }
 
     // Check if signals are mostly empty (historical calls unscored)
-    const hasAnySignals = practiceCount !== null && practiceCount > 0
+    const hasAnySignals = actionCount !== null && actionCount > 0
 
     return {
-      reps,
-      practiceCount,
-      translationCount,
+      calls,
+      actionCount,
+      winCount,
       goalAchieved,
       remaining,
       needPerDay,
@@ -160,13 +160,13 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
     setEditingTarget(false)
   }
 
-  // Target metric label
-  const targetMetricLabel = {
-    reps: "Reps",
-    practice: practiceMarker?.label || "Practice",
-    translation: translationMarker?.label || "Translation",
+  // Primary goal label for the headline
+  const goalLabel = {
+    reps: "Calls",
+    action: actionMarker?.label || "Actions",
+    win: winMarker?.label || "Wins",
     outcome_meetings: "Meetings",
-  }[activePhase.targetMetric]
+  }[activePhase.primaryGoal]
 
   return (
     <TooltipProvider>
@@ -187,10 +187,10 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
 
             <div className="flex-1 min-w-0">
               <p className="text-[11px] text-muted-foreground truncate">
-                <span className="font-medium">Why:</span> {activePhase.why}
+                <span className="font-medium">Why:</span> {activePhase.whyText}
               </p>
               <p className="text-[11px] text-muted-foreground truncate">
-                <span className="font-medium">Do:</span> {activePhase.do_}
+                <span className="font-medium">Do:</span> {activePhase.doText}
               </p>
             </div>
 
@@ -211,14 +211,14 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
               <div className="flex items-center gap-1.5">
                 <Target className="h-3.5 w-3.5 text-primary" />
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  {targetMetricLabel}
+                  {goalLabel}
                 </span>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="h-3 w-3 text-muted-foreground/50 cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-[250px]">
-                    <p className="text-xs font-medium mb-1">Win: {activePhase.win}</p>
+                    <p className="text-xs font-medium mb-1">Win definition: {activePhase.winText}</p>
                     {activePhase.exitCriteria && (
                       <p className="text-xs text-muted-foreground">Switch when: {activePhase.exitCriteria}</p>
                     )}
@@ -260,22 +260,22 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
 
               <Progress value={progress} className="h-1.5" />
 
-              {/* Scoreboard: reps / practice / translation — always visible */}
+              {/* Scoreboard: calls / action / win — always visible */}
               <div className="space-y-0.5 pt-1">
                 <p className="text-[10px] text-muted-foreground tabular-nums">
-                  Reps: {scoreboard.reps}
+                  Calls: {scoreboard.calls}
                 </p>
-                {scoreboard.practiceCount !== null && (
+                {scoreboard.actionCount !== null && (
                   <p className="text-[10px] text-muted-foreground tabular-nums">
-                    {practiceMarker?.label || "Practice"}: {scoreboard.practiceCount} / {scoreboard.reps}
+                    {actionMarker?.label || "Action"}: {scoreboard.actionCount} / {scoreboard.calls}
                   </p>
                 )}
-                {scoreboard.translationCount !== null && (
+                {scoreboard.winCount !== null && (
                   <p className="text-[10px] text-muted-foreground tabular-nums">
-                    {activePhase.targetMetric === "outcome_meetings"
+                    {activePhase.primaryGoal === "outcome_meetings"
                       ? "Meetings"
-                      : (translationMarker?.label || "Translation")
-                    }: {scoreboard.translationCount} / {scoreboard.reps}
+                      : (winMarker?.label || "Win")
+                    }: {scoreboard.winCount} / {scoreboard.calls}
                   </p>
                 )}
               </div>
@@ -296,7 +296,7 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
                 </p>
               )}
               {/* "Starts now" message for empty signals */}
-              {!scoreboard.hasAnySignals && scoreboard.reps > 0 && scoreboard.practiceCount !== null && (
+              {!scoreboard.hasAnySignals && scoreboard.calls > 0 && scoreboard.actionCount !== null && (
                 <p className="text-[10px] text-amber-600 mt-2">
                   Signals start from now — older calls are unscored
                 </p>

@@ -44,8 +44,8 @@ import {
   type Lever,
   type Marker,
   type Phase,
-  type TargetMetric,
-  type GoalPeriod,
+  type PrimaryGoal,
+  type PeriodConfig,
 } from "@/lib/framework"
 
 // ============================================================================
@@ -207,13 +207,13 @@ function FrameworkTab() {
     const newPhase: Phase = {
       key,
       label: "New Phase",
-      why: "",
-      do_: "",
-      win: "",
+      whyText: "",
+      doText: "",
+      winText: "",
       focusLeverKey: localFw.levers[0]?.key || "",
-      targetMetric: "reps",
+      primaryGoal: "reps",
       target: 40,
-      period: "iso_week",
+      period: { type: "iso_week" },
     }
     setLocalFw(prev => ({
       ...prev,
@@ -244,6 +244,24 @@ function FrameworkTab() {
     })
   }
 
+  // --- Period helpers ---
+  const getPeriodSelectValue = (p: PeriodConfig): string => {
+    if (p.type === "rolling_days") return "rolling_days"
+    return p.type
+  }
+  const handlePeriodTypeChange = (phaseKey: string, val: string) => {
+    if (val === "rolling_days") {
+      updatePhase(phaseKey, { period: { type: "rolling_days", days: 7 } })
+    } else if (val === "iso_week") {
+      updatePhase(phaseKey, { period: { type: "iso_week" } })
+    } else {
+      updatePhase(phaseKey, { period: { type: "today" } })
+    }
+  }
+  const handleRollingDaysChange = (phaseKey: string, days: number) => {
+    updatePhase(phaseKey, { period: { type: "rolling_days", days: Math.max(1, Math.min(365, days)) } })
+  }
+
   // --- Marker helpers ---
   const handleAddMarker = () => {
     const label = newMarkerLabel.trim()
@@ -263,7 +281,7 @@ function FrameworkTab() {
 
   const handleDeleteMarker = (markerKey: string) => {
     const usedBy = localFw.phases.filter(p =>
-      p.practiceMarkerKey === markerKey || p.translationMarkerKey === markerKey
+      p.actionMarkerKey === markerKey || p.winMarkerKey === markerKey
     )
     if (usedBy.length > 0) {
       toast({
@@ -346,10 +364,10 @@ function FrameworkTab() {
     }
   }
 
-  const targetMetricOptions: { value: TargetMetric; label: string }[] = [
-    { value: "reps", label: "Reps (all calls)" },
-    { value: "practice", label: "Practice marker count" },
-    { value: "translation", label: "Translation marker count" },
+  const primaryGoalOptions: { value: PrimaryGoal; label: string }[] = [
+    { value: "reps", label: "Calls (reps)" },
+    { value: "action", label: "Actions (did the move)" },
+    { value: "win", label: "Wins (it worked)" },
     { value: "outcome_meetings", label: "Meetings booked" },
   ]
 
@@ -410,10 +428,10 @@ function FrameworkTab() {
                       {localFw.activePhaseKey === phase.key && (
                         <Badge variant="default" className="text-[10px] h-4">Active</Badge>
                       )}
-                      <Badge variant="outline" className="text-[10px]">{phase.targetMetric}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{phase.primaryGoal}</Badge>
                     </div>
-                    {!isExpanded && phase.why && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">Why: {phase.why}</p>
+                    {!isExpanded && phase.whyText && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">Why: {phase.whyText}</p>
                     )}
                   </button>
                   <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
@@ -440,14 +458,15 @@ function FrameworkTab() {
                       />
                     </div>
 
-                    {/* WHY / DO / WIN */}
+                    {/* Story: WHY / DO / WIN definition */}
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider pt-1">Story</p>
                     <div>
                       <Label className="text-xs">Why (bottleneck hypothesis)</Label>
                       <Input
                         className="h-8 text-sm mt-1"
                         placeholder="My calls aren't converting — I need better execution"
-                        value={phase.why}
-                        onChange={(e) => updatePhase(phase.key, { why: e.target.value })}
+                        value={phase.whyText}
+                        onChange={(e) => updatePhase(phase.key, { whyText: e.target.value })}
                       />
                     </div>
                     <div>
@@ -455,29 +474,45 @@ function FrameworkTab() {
                       <Input
                         className="h-8 text-sm mt-1"
                         placeholder="Practice the focus skill consciously on every call"
-                        value={phase.do_}
-                        onChange={(e) => updatePhase(phase.key, { do_: e.target.value })}
+                        value={phase.doText}
+                        onChange={(e) => updatePhase(phase.key, { doText: e.target.value })}
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">Win (what counts as progress)</Label>
+                      <Label className="text-xs">Win definition (what counts as progress)</Label>
                       <Input
                         className="h-8 text-sm mt-1"
-                        placeholder="High practice rate with truth gained on most connects"
-                        value={phase.win}
-                        onChange={(e) => updatePhase(phase.key, { win: e.target.value })}
+                        placeholder="High action rate with new truths gained on most connects"
+                        value={phase.winText}
+                        onChange={(e) => updatePhase(phase.key, { winText: e.target.value })}
                       />
                     </div>
-
-                    {/* Exit Criteria */}
                     <div>
                       <Label className="text-xs">Exit Criteria (when to switch phases)</Label>
                       <Input
                         className="h-8 text-sm mt-1"
-                        placeholder="Practice rate > 80% for two weeks"
+                        placeholder="Action rate > 80% for two weeks"
                         value={phase.exitCriteria || ""}
                         onChange={(e) => updatePhase(phase.key, { exitCriteria: e.target.value || undefined })}
                       />
+                    </div>
+
+                    {/* Tracking */}
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider pt-2">Tracking</p>
+
+                    {/* Primary Goal */}
+                    <div>
+                      <Label className="text-xs">Primary Goal</Label>
+                      <Select value={phase.primaryGoal} onValueChange={(v) => updatePhase(phase.key, { primaryGoal: v as PrimaryGoal })}>
+                        <SelectTrigger className="h-8 text-xs mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {primaryGoalOptions.map(o => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {/* Target + Period + Focus Lever */}
@@ -495,16 +530,28 @@ function FrameworkTab() {
                       </div>
                       <div>
                         <Label className="text-xs">Period</Label>
-                        <Select value={phase.period} onValueChange={(v) => updatePhase(phase.key, { period: v as GoalPeriod })}>
-                          <SelectTrigger className="h-8 text-xs mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="iso_week">This week</SelectItem>
-                            <SelectItem value="rolling_7">Rolling 7 days</SelectItem>
-                            <SelectItem value="today">Today</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex gap-1 mt-1">
+                          <Select value={getPeriodSelectValue(phase.period)} onValueChange={(v) => handlePeriodTypeChange(phase.key, v)}>
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="iso_week">This week</SelectItem>
+                              <SelectItem value="rolling_days">Rolling...</SelectItem>
+                              <SelectItem value="today">Today</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {phase.period.type === "rolling_days" && (
+                            <Input
+                              type="number"
+                              min={1}
+                              max={365}
+                              className="h-8 text-xs w-16"
+                              value={phase.period.days}
+                              onChange={(e) => handleRollingDaysChange(phase.key, parseInt(e.target.value) || 7)}
+                            />
+                          )}
+                        </div>
                       </div>
                       <div>
                         <Label className="text-xs">Focus Lever</Label>
@@ -521,30 +568,16 @@ function FrameworkTab() {
                       </div>
                     </div>
 
-                    {/* Target Metric */}
-                    <div>
-                      <Label className="text-xs">Target Counts</Label>
-                      <Select value={phase.targetMetric} onValueChange={(v) => updatePhase(phase.key, { targetMetric: v as TargetMetric })}>
-                        <SelectTrigger className="h-8 text-xs mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {targetMetricOptions.map(o => (
-                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Practice Marker + Translation Marker */}
+                    {/* Action checkbox + Win checkbox */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label className="text-xs">Practice Marker</Label>
+                        <Label className="text-xs">Action checkbox</Label>
+                        <p className="text-[10px] text-muted-foreground mb-1">Did you do the move?</p>
                         <Select
-                          value={phase.practiceMarkerKey || "__none__"}
-                          onValueChange={(v) => updatePhase(phase.key, { practiceMarkerKey: v === "__none__" ? undefined : v })}
+                          value={phase.actionMarkerKey || "__none__"}
+                          onValueChange={(v) => updatePhase(phase.key, { actionMarkerKey: v === "__none__" ? undefined : v })}
                         >
-                          <SelectTrigger className="h-8 text-xs mt-1">
+                          <SelectTrigger className="h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -556,12 +589,13 @@ function FrameworkTab() {
                         </Select>
                       </div>
                       <div>
-                        <Label className="text-xs">Translation Marker</Label>
+                        <Label className="text-xs">Win checkbox</Label>
+                        <p className="text-[10px] text-muted-foreground mb-1">Did it work?</p>
                         <Select
-                          value={phase.translationMarkerKey || "__none__"}
-                          onValueChange={(v) => updatePhase(phase.key, { translationMarkerKey: v === "__none__" ? undefined : v })}
+                          value={phase.winMarkerKey || "__none__"}
+                          onValueChange={(v) => updatePhase(phase.key, { winMarkerKey: v === "__none__" ? undefined : v })}
                         >
-                          <SelectTrigger className="h-8 text-xs mt-1">
+                          <SelectTrigger className="h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -585,7 +619,7 @@ function FrameworkTab() {
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Markers</h3>
         <p className="text-xs text-muted-foreground">
-          Markers are Y/N observations you record per call. Phases reference them for practice and translation tracking.
+          Markers are Y/N observations you record per call. Phases use them as action and win checkboxes.
         </p>
         <div className="border rounded-lg divide-y">
           {localFw.markers.map((marker) => (
