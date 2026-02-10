@@ -662,6 +662,111 @@ function getAttemptScore(attempt: Attempt): number {
 }
 
 // ============================================================================
+// TAGS
+// ============================================================================
+
+export interface Tag {
+  id: string
+  name: string
+  color: string
+  createdAt: string
+}
+
+// ============================================================================
+// TEMPLATES
+// ============================================================================
+
+export type TemplateCategory = "call" | "email" | "sms" | "note"
+
+export interface Template {
+  id: string
+  name: string
+  category: TemplateCategory
+  subject?: string
+  body: string
+  variables: string[]
+  isDefault: boolean
+  position: number
+  createdAt: string
+}
+
+// ============================================================================
+// WORKFLOWS
+// ============================================================================
+
+export type WorkflowTriggerType =
+  | "stage_change"
+  | "new_lead"
+  | "tag_added"
+  | "tag_removed"
+  | "field_changed"
+  | "lead_idle"
+  | "task_overdue"
+  | "outcome_logged"
+
+export type WorkflowActionType =
+  | "change_stage"
+  | "add_tag"
+  | "remove_tag"
+  | "create_task"
+  | "update_field"
+  | "send_notification"
+  | "enroll_sequence"
+
+export interface Workflow {
+  id: string
+  name: string
+  description?: string
+  isActive: boolean
+  triggerType: WorkflowTriggerType
+  triggerConfig: Record<string, unknown>
+  actionType: WorkflowActionType
+  actionConfig: Record<string, unknown>
+  executionCount: number
+  lastExecutedAt?: string
+  createdAt: string
+}
+
+// ============================================================================
+// SEQUENCES
+// ============================================================================
+
+export type SequenceStepType = "call" | "email" | "sms" | "task" | "wait"
+export type SequenceEnrollmentStatus = "active" | "paused" | "completed" | "exited"
+
+export interface Sequence {
+  id: string
+  name: string
+  description?: string
+  isActive: boolean
+  createdAt: string
+}
+
+export interface SequenceStep {
+  id: string
+  sequenceId: string
+  position: number
+  stepType: SequenceStepType
+  delayDays: number
+  templateId?: string
+  config: Record<string, unknown>
+  createdAt: string
+}
+
+export interface SequenceEnrollment {
+  id: string
+  leadId: string
+  sequenceId: string
+  currentStep: number
+  status: SequenceEnrollmentStatus
+  enrolledAt: string
+  lastStepCompletedAt?: string
+  nextStepDueAt?: string
+  exitReason?: string
+  createdAt: string
+}
+
+// ============================================================================
 // SAMPLE DATA
 // ============================================================================
 

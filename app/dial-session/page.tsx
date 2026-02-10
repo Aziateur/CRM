@@ -49,6 +49,7 @@ import {
   ChevronDown,
   Keyboard
 } from "lucide-react"
+import { TemplateQuickPick } from "@/components/template-manager"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import {
@@ -640,6 +641,11 @@ export default function DialSessionPage() {
                   <span>{formatDuration(callDuration)}</span>
                 </div>
               )}
+
+              {/* Quick scripts */}
+              <div className="flex justify-end">
+                <TemplateQuickPick onSelect={(t) => { navigator.clipboard.writeText(t.body).catch(() => {}) }} />
+              </div>
 
               {/* Call controls */}
               <div className="flex gap-3">

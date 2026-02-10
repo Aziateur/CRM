@@ -7,6 +7,8 @@ import { useTasks } from "@/hooks/use-tasks"
 import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { DynamicFieldRenderer } from "@/components/dynamic-field-renderer"
+import { TagToggle } from "@/components/tag-manager"
+import { SequenceEnrollmentWidget } from "@/components/sequence-enrollment"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -302,6 +304,7 @@ export function LeadDrawer({
                 <h2 className="text-xl font-semibold">{ed.company}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="outline">{ed.segment}</Badge>
+                  <TagToggle leadId={ed.id} />
                   {/* Stage selector */}
                   <Select value={ed.stage || "New"} onValueChange={handleStageChange}>
                     <SelectTrigger className="h-6 w-auto text-xs gap-1 border-0 px-2" style={{ color: stages.find((s) => s.name === (ed.stage || "New"))?.color }}>
@@ -758,6 +761,9 @@ export function LeadDrawer({
                   )}
                 </CardContent>
               </Card>
+
+              {/* SEQUENCES */}
+              <SequenceEnrollmentWidget leadId={ed.id} />
 
               {/* ATTEMPTS TIMELINE */}
               <Card>

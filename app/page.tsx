@@ -9,6 +9,7 @@ import { useAttempts } from "@/hooks/use-attempts"
 import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useTasks } from "@/hooks/use-tasks"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
+import { useTags, useAllLeadTags } from "@/hooks/use-tags"
 import { LeadsTable, deriveLeadFields, type LeadWithDerived } from "@/components/leads-table"
 import { KanbanBoard } from "@/components/kanban-board"
 import { TasksDashboard } from "@/components/tasks-dashboard"
@@ -52,6 +53,8 @@ export default function LeadsPage() {
   const { stages } = usePipelineStages()
   const { tasks, completeTask } = useTasks()
   const { fields: fieldDefinitions } = useFieldDefinitions("lead")
+  const { tags } = useTags()
+  const { leadTagsMap } = useAllLeadTags()
   const { presets, savePreset, deletePreset } = useViewPresets("lead")
 
   // View mode
@@ -303,6 +306,8 @@ export default function LeadsPage() {
             stages={stages}
             attempts={attempts}
             fieldDefinitions={fieldDefinitions}
+            tags={tags}
+            leadTagsMap={leadTagsMap}
             onSelectLead={openLeadDrawer}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
@@ -312,6 +317,8 @@ export default function LeadsPage() {
             leads={filteredLeads}
             stages={stages}
             attempts={attempts}
+            tags={tags}
+            leadTagsMap={leadTagsMap}
             onSelectLead={openLeadDrawer}
             onLeadUpdated={handleLeadUpdated}
           />

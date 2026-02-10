@@ -6,6 +6,10 @@ import { Topbar } from "@/components/topbar"
 import { FieldEditor } from "@/components/field-editor"
 import { PipelineEditor } from "@/components/pipeline-editor"
 import { LeadImport } from "@/components/lead-import"
+import { TagManager } from "@/components/tag-manager"
+import { TemplateManager } from "@/components/template-manager"
+import { DuplicateDetector } from "@/components/duplicate-detector"
+import { WorkflowEditor } from "@/components/workflow-editor"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
@@ -185,6 +189,11 @@ function DataManagement() {
   )
 }
 
+function DuplicateSection() {
+  const { leads, refetch } = useLeads()
+  return <DuplicateDetector leads={leads} onLeadsChanged={refetch} />
+}
+
 export default function SettingsPage() {
   return (
     <div className="flex flex-col min-h-screen">
@@ -193,12 +202,16 @@ export default function SettingsPage() {
       <div className="flex-1 p-6 max-w-3xl">
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Pipeline, custom fields, data management, and system configuration</p>
+          <p className="text-muted-foreground">Pipeline, fields, tags, templates, workflows, data, and diagnostics</p>
         </div>
 
         <div className="space-y-10">
           <PipelineEditor />
           <FieldEditor />
+          <TagManager />
+          <TemplateManager />
+          <WorkflowEditor />
+          <DuplicateSection />
           <DataManagement />
           <SystemDiagnostics />
         </div>
