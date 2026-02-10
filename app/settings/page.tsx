@@ -39,13 +39,12 @@ import {
 import { CheckCircle2, XCircle, RefreshCw, Download, Phone, ExternalLink, Database, Cloud, ChevronDown, Plus, Trash2, RotateCcw } from "lucide-react"
 import { useFramework } from "@/hooks/use-framework"
 import {
-  getFramework,
-  setFramework,
   DEFAULT_FRAMEWORK,
   type Framework,
   type Lever,
+  type Marker,
   type Phase,
-  type GoalCounterKey,
+  type TargetMetric,
   type GoalPeriod,
 } from "@/lib/framework"
 
@@ -165,15 +164,21 @@ function FrameworkTab() {
   const { framework, saveFramework } = useFramework()
   const [localFw, setLocalFw] = useState<Framework>(framework)
   const [newLeverLabel, setNewLeverLabel] = useState("")
+  const [newLeverPrompt, setNewLeverPrompt] = useState("")
+  const [newMarkerLabel, setNewMarkerLabel] = useState("")
+  const [newMarkerDef, setNewMarkerDef] = useState("")
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [jsonDraft, setJsonDraft] = useState("")
+  const [expandedPhase, setExpandedPhase] = useState<string | null>(null)
 
   // Sync local state when framework changes externally
   useEffect(() => {
     setLocalFw(framework)
   }, [framework])
 
-  const handleSaveSimple = () => {
+  const hasUnsavedChanges = JSON.stringify(localFw) !== JSON.stringify(framework)
+
+  const handleSave = () => {
     const result = saveFramework(localFw)
     if (result.ok) {
       toast({ title: "Framework saved" })
@@ -182,33 +187,108 @@ function FrameworkTab() {
     }
   }
 
-  const handlePhaseTargetChange = (phaseKey: string, target: number) => {
+  const handleReset = () => {
+    setLocalFw(structuredClone(DEFAULT_FRAMEWORK))
+    toast({ title: "Reset to defaults (save to apply)" })
+  }
+
+  // --- Phase helpers ---
+  const updatePhase = (phaseKey: string, patch: Partial<Phase>) => {
     setLocalFw(prev => ({
       ...prev,
       phases: prev.phases.map(p =>
-        p.key === phaseKey ? { ...p, target: Math.max(0, Math.min(999, target)) } : p
+        p.key === phaseKey ? { ...p, ...patch } : p
       ),
     }))
   }
 
-  const handlePhasePeriodChange = (phaseKey: string, period: GoalPeriod) => {
+  const handleAddPhase = () => {
+    const key = "phase_" + Date.now()
+    const newPhase: Phase = {
+      key,
+      label: "New Phase",
+      why: "",
+      do_: "",
+      win: "",
+      focusLeverKey: localFw.levers[0]?.key || "",
+      targetMetric: "reps",
+      target: 40,
+      period: "iso_week",
+    }
     setLocalFw(prev => ({
       ...prev,
-      phases: prev.phases.map(p =>
-        p.key === phaseKey ? { ...p, period } : p
+      phases: [...prev.phases, newPhase],
+    }))
+    setExpandedPhase(key)
+  }
+
+  const handleDeletePhase = (phaseKey: string) => {
+    if (localFw.phases.length <= 1) {
+      toast({ variant: "destructive", title: "At least one phase required" })
+      return
+    }
+    setLocalFw(prev => {
+      const phases = prev.phases.filter(p => p.key !== phaseKey)
+      const activePhaseKey = prev.activePhaseKey === phaseKey ? phases[0].key : prev.activePhaseKey
+      return { ...prev, phases, activePhaseKey }
+    })
+  }
+
+  const handleMovePhase = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= localFw.phases.length) return
+    setLocalFw(prev => {
+      const phases = [...prev.phases]
+      ;[phases[index], phases[newIndex]] = [phases[newIndex], phases[index]]
+      return { ...prev, phases }
+    })
+  }
+
+  // --- Marker helpers ---
+  const handleAddMarker = () => {
+    const label = newMarkerLabel.trim()
+    if (!label) return
+    const key = label.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    if (localFw.markers.some(m => m.key === key)) {
+      toast({ variant: "destructive", title: "Marker key already exists" })
+      return
+    }
+    setLocalFw(prev => ({
+      ...prev,
+      markers: [...prev.markers, { key, label, definition: newMarkerDef.trim() || undefined }],
+    }))
+    setNewMarkerLabel("")
+    setNewMarkerDef("")
+  }
+
+  const handleDeleteMarker = (markerKey: string) => {
+    const usedBy = localFw.phases.filter(p =>
+      p.practiceMarkerKey === markerKey || p.translationMarkerKey === markerKey
+    )
+    if (usedBy.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Cannot delete",
+        description: `Used by: ${usedBy.map(p => p.label).join(", ")}`,
+      })
+      return
+    }
+    setLocalFw(prev => ({
+      ...prev,
+      markers: prev.markers.filter(m => m.key !== markerKey),
+    }))
+  }
+
+  const updateMarker = (markerKey: string, patch: Partial<Marker>) => {
+    setLocalFw(prev => ({
+      ...prev,
+      markers: prev.markers.map(m =>
+        m.key === markerKey ? { ...m, ...patch } : m
       ),
     }))
   }
 
-  const handlePhaseLeverChange = (phaseKey: string, leverKey: string) => {
-    setLocalFw(prev => ({
-      ...prev,
-      phases: prev.phases.map(p =>
-        p.key === phaseKey ? { ...p, focusLeverKey: leverKey } : p
-      ),
-    }))
-  }
-
+  // --- Lever helpers ---
   const handleAddLever = () => {
     const label = newLeverLabel.trim()
     if (!label) return
@@ -219,13 +299,13 @@ function FrameworkTab() {
     }
     setLocalFw(prev => ({
       ...prev,
-      levers: [...prev.levers, { key, label }],
+      levers: [...prev.levers, { key, label, prompt: newLeverPrompt.trim() || undefined }],
     }))
     setNewLeverLabel("")
+    setNewLeverPrompt("")
   }
 
   const handleDeleteLever = (leverKey: string) => {
-    // Check if any phase uses this lever
     const usedBy = localFw.phases.filter(p => p.focusLeverKey === leverKey)
     if (usedBy.length > 0) {
       toast({
@@ -251,11 +331,6 @@ function FrameworkTab() {
     })
   }
 
-  const handleReset = () => {
-    setLocalFw(structuredClone(DEFAULT_FRAMEWORK))
-    toast({ title: "Reset to defaults (save to apply)" })
-  }
-
   const handleJsonSave = () => {
     try {
       const parsed = JSON.parse(jsonDraft)
@@ -271,11 +346,16 @@ function FrameworkTab() {
     }
   }
 
-  const hasUnsavedChanges = JSON.stringify(localFw) !== JSON.stringify(framework)
+  const targetMetricOptions: { value: TargetMetric; label: string }[] = [
+    { value: "reps", label: "Reps (all calls)" },
+    { value: "practice", label: "Practice marker count" },
+    { value: "translation", label: "Translation marker count" },
+    { value: "outcome_meetings", label: "Meetings booked" },
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Active phase */}
+      {/* Active Phase */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Phase</h3>
         <Select
@@ -293,63 +373,282 @@ function FrameworkTab() {
         </Select>
       </div>
 
-      {/* Phases */}
+      {/* ── PHASES ── */}
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Phases</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Phases</h3>
+          <Button size="sm" variant="outline" className="h-7 bg-transparent" onClick={handleAddPhase}>
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Add Phase
+          </Button>
+        </div>
         <div className="border rounded-lg divide-y">
-          {localFw.phases.map((phase) => (
-            <div key={phase.key} className="px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{phase.label}</p>
-                <Badge variant="outline" className="text-xs">{phase.goalCounterKey}</Badge>
+          {localFw.phases.map((phase, phaseIdx) => {
+            const isExpanded = expandedPhase === phase.key
+            return (
+              <div key={phase.key} className="px-4 py-3">
+                {/* Phase header row */}
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      className="text-muted-foreground hover:text-foreground text-xs leading-none disabled:opacity-30"
+                      disabled={phaseIdx === 0}
+                      onClick={() => handleMovePhase(phaseIdx, -1)}
+                    >▲</button>
+                    <button
+                      className="text-muted-foreground hover:text-foreground text-xs leading-none disabled:opacity-30"
+                      disabled={phaseIdx === localFw.phases.length - 1}
+                      onClick={() => handleMovePhase(phaseIdx, 1)}
+                    >▼</button>
+                  </div>
+                  <button
+                    className="flex-1 text-left"
+                    onClick={() => setExpandedPhase(isExpanded ? null : phase.key)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{phase.label}</p>
+                      {localFw.activePhaseKey === phase.key && (
+                        <Badge variant="default" className="text-[10px] h-4">Active</Badge>
+                      )}
+                      <Badge variant="outline" className="text-[10px]">{phase.targetMetric}</Badge>
+                    </div>
+                    {!isExpanded && phase.why && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">Why: {phase.why}</p>
+                    )}
+                  </button>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => handleDeletePhase(phase.key)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+
+                {/* Expanded phase editor */}
+                {isExpanded && (
+                  <div className="mt-3 space-y-3 pl-6">
+                    {/* Label */}
+                    <div>
+                      <Label className="text-xs">Phase Name</Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        value={phase.label}
+                        onChange={(e) => updatePhase(phase.key, { label: e.target.value })}
+                      />
+                    </div>
+
+                    {/* WHY / DO / WIN */}
+                    <div>
+                      <Label className="text-xs">Why (bottleneck hypothesis)</Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        placeholder="My calls aren't converting — I need better execution"
+                        value={phase.why}
+                        onChange={(e) => updatePhase(phase.key, { why: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Do (behavior each call)</Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        placeholder="Practice the focus skill consciously on every call"
+                        value={phase.do_}
+                        onChange={(e) => updatePhase(phase.key, { do_: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Win (what counts as progress)</Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        placeholder="High practice rate with truth gained on most connects"
+                        value={phase.win}
+                        onChange={(e) => updatePhase(phase.key, { win: e.target.value })}
+                      />
+                    </div>
+
+                    {/* Exit Criteria */}
+                    <div>
+                      <Label className="text-xs">Exit Criteria (when to switch phases)</Label>
+                      <Input
+                        className="h-8 text-sm mt-1"
+                        placeholder="Practice rate > 80% for two weeks"
+                        value={phase.exitCriteria || ""}
+                        onChange={(e) => updatePhase(phase.key, { exitCriteria: e.target.value || undefined })}
+                      />
+                    </div>
+
+                    {/* Target + Period + Focus Lever */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-xs">Target</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={999}
+                          className="h-8 text-sm mt-1"
+                          value={phase.target}
+                          onChange={(e) => updatePhase(phase.key, { target: Math.max(0, Math.min(999, parseInt(e.target.value) || 0)) })}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Period</Label>
+                        <Select value={phase.period} onValueChange={(v) => updatePhase(phase.key, { period: v as GoalPeriod })}>
+                          <SelectTrigger className="h-8 text-xs mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="iso_week">This week</SelectItem>
+                            <SelectItem value="rolling_7">Rolling 7 days</SelectItem>
+                            <SelectItem value="today">Today</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Focus Lever</Label>
+                        <Select value={phase.focusLeverKey} onValueChange={(v) => updatePhase(phase.key, { focusLeverKey: v })}>
+                          <SelectTrigger className="h-8 text-xs mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {localFw.levers.map(l => (
+                              <SelectItem key={l.key} value={l.key}>{l.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Target Metric */}
+                    <div>
+                      <Label className="text-xs">Target Counts</Label>
+                      <Select value={phase.targetMetric} onValueChange={(v) => updatePhase(phase.key, { targetMetric: v as TargetMetric })}>
+                        <SelectTrigger className="h-8 text-xs mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {targetMetricOptions.map(o => (
+                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Practice Marker + Translation Marker */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Practice Marker</Label>
+                        <Select
+                          value={phase.practiceMarkerKey || "__none__"}
+                          onValueChange={(v) => updatePhase(phase.key, { practiceMarkerKey: v === "__none__" ? undefined : v })}
+                        >
+                          <SelectTrigger className="h-8 text-xs mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None</SelectItem>
+                            {localFw.markers.map(m => (
+                              <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Translation Marker</Label>
+                        <Select
+                          value={phase.translationMarkerKey || "__none__"}
+                          onValueChange={(v) => updatePhase(phase.key, { translationMarkerKey: v === "__none__" ? undefined : v })}
+                        >
+                          <SelectTrigger className="h-8 text-xs mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None</SelectItem>
+                            {localFw.markers.map(m => (
+                              <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs">Target</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={999}
-                    className="h-8 text-sm mt-1"
-                    value={phase.target}
-                    onChange={(e) => handlePhaseTargetChange(phase.key, parseInt(e.target.value) || 0)}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Period</Label>
-                  <Select value={phase.period} onValueChange={(v) => handlePhasePeriodChange(phase.key, v as GoalPeriod)}>
-                    <SelectTrigger className="h-8 text-xs mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="iso_week">This week</SelectItem>
-                      <SelectItem value="rolling_7">Rolling 7 days</SelectItem>
-                      <SelectItem value="today">Today</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Focus Lever</Label>
-                  <Select value={phase.focusLeverKey} onValueChange={(v) => handlePhaseLeverChange(phase.key, v)}>
-                    <SelectTrigger className="h-8 text-xs mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {localFw.levers.map(l => (
-                        <SelectItem key={l.key} value={l.key}>{l.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
-      {/* Levers */}
+      {/* ── MARKERS ── */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Markers</h3>
+        <p className="text-xs text-muted-foreground">
+          Markers are Y/N observations you record per call. Phases reference them for practice and translation tracking.
+        </p>
+        <div className="border rounded-lg divide-y">
+          {localFw.markers.map((marker) => (
+            <div key={marker.key} className="px-4 py-2 space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <Input
+                    className="h-7 text-sm font-medium border-0 px-0 shadow-none focus-visible:ring-0"
+                    value={marker.label}
+                    onChange={(e) => updateMarker(marker.key, { label: e.target.value })}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground font-mono shrink-0">{marker.key}</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => handleDeleteMarker(marker.key)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </div>
+              <Input
+                className="h-6 text-xs text-muted-foreground border-0 px-0 shadow-none focus-visible:ring-0"
+                placeholder="Definition (shown as tooltip in logger)"
+                value={marker.definition || ""}
+                onChange={(e) => updateMarker(marker.key, { definition: e.target.value || undefined })}
+              />
+            </div>
+          ))}
+          {/* Add marker row */}
+          <div className="px-4 py-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="New marker label..."
+                className="h-8 text-sm flex-1"
+                value={newMarkerLabel}
+                onChange={(e) => setNewMarkerLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddMarker() }}
+              />
+              <Button size="sm" variant="outline" className="h-8 bg-transparent" onClick={handleAddMarker}>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
+            </div>
+            {newMarkerLabel && (
+              <Input
+                placeholder="Definition (optional)"
+                className="h-7 text-xs"
+                value={newMarkerDef}
+                onChange={(e) => setNewMarkerDef(e.target.value)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── LEVERS ── */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Levers</h3>
+        <p className="text-xs text-muted-foreground">
+          Behavior reminders shown during calls. Each phase picks one as its focus lever.
+        </p>
         <div className="border rounded-lg divide-y">
           {localFw.levers.map((lever, i) => (
             <div key={lever.key} className="flex items-center gap-2 px-4 py-2">
@@ -358,24 +657,20 @@ function FrameworkTab() {
                   className="text-muted-foreground hover:text-foreground text-xs leading-none disabled:opacity-30"
                   disabled={i === 0}
                   onClick={() => handleMoveLever(i, -1)}
-                >
-                  ▲
-                </button>
+                >▲</button>
                 <button
                   className="text-muted-foreground hover:text-foreground text-xs leading-none disabled:opacity-30"
                   disabled={i === localFw.levers.length - 1}
                   onClick={() => handleMoveLever(i, 1)}
-                >
-                  ▼
-                </button>
+                >▼</button>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{lever.label}</p>
-                <p className="text-[10px] text-muted-foreground font-mono">{lever.key}</p>
+                {lever.prompt && (
+                  <p className="text-[10px] text-muted-foreground truncate">{lever.prompt}</p>
+                )}
               </div>
-              {lever.prompt && (
-                <p className="text-xs text-muted-foreground truncate max-w-[200px]">{lever.prompt}</p>
-              )}
+              <p className="text-[10px] text-muted-foreground font-mono shrink-0">{lever.key}</p>
               <Button
                 variant="ghost"
                 size="icon"
@@ -387,25 +682,35 @@ function FrameworkTab() {
             </div>
           ))}
           {/* Add lever row */}
-          <div className="flex items-center gap-2 px-4 py-2">
-            <Input
-              placeholder="New lever name..."
-              className="h-8 text-sm flex-1"
-              value={newLeverLabel}
-              onChange={(e) => setNewLeverLabel(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddLever() }}
-            />
-            <Button size="sm" variant="outline" className="h-8 bg-transparent" onClick={handleAddLever}>
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              Add
-            </Button>
+          <div className="px-4 py-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="New lever name..."
+                className="h-8 text-sm flex-1"
+                value={newLeverLabel}
+                onChange={(e) => setNewLeverLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddLever() }}
+              />
+              <Button size="sm" variant="outline" className="h-8 bg-transparent" onClick={handleAddLever}>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
+            </div>
+            {newLeverLabel && (
+              <Input
+                placeholder="Coaching prompt (optional)"
+                className="h-7 text-xs"
+                value={newLeverPrompt}
+                onChange={(e) => setNewLeverPrompt(e.target.value)}
+              />
+            )}
           </div>
         </div>
       </div>
 
       {/* Save / Reset */}
       <div className="flex gap-2">
-        <Button onClick={handleSaveSimple} disabled={!hasUnsavedChanges}>
+        <Button onClick={handleSave} disabled={!hasUnsavedChanges}>
           Save Changes
         </Button>
         <Button variant="outline" className="bg-transparent" onClick={handleReset}>
