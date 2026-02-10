@@ -18,19 +18,26 @@ interface KanbanBoardProps {
   onLeadUpdated: (lead: LeadWithDerived) => void
 }
 
+const INITIAL_VISIBLE = 50
+
 export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadUpdated }: KanbanBoardProps) {
   const { toast } = useToast()
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
+  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set())
 
   const getLeadsForStage = useCallback(
-    (stageName: string) => {
+    (stageName: string, isFirstStage: boolean) => {
+      const stageNames = new Set(stages.map((s) => s.name))
       return leads.filter((lead) => {
         const effective = getEffectiveStage(lead, attempts)
-        return effective === stageName
+        if (effective === stageName) return true
+        // Put leads with no stage or unrecognized stage in the first column
+        if (isFirstStage && !stageNames.has(effective)) return true
+        return false
       })
     },
-    [leads, attempts]
+    [leads, attempts, stages]
   )
 
   const handleDragStart = (e: React.DragEvent, leadId: string) => {
@@ -104,8 +111,8 @@ export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadUpdat
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
-      {stages.map((stage) => {
-        const stageLeads = getLeadsForStage(stage.name)
+      {stages.map((stage, idx) => {
+        const stageLeads = getLeadsForStage(stage.name, idx === 0)
         const isOver = dragOverStage === stage.name
 
         return (
@@ -133,42 +140,59 @@ export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadUpdat
             </div>
 
             {/* Cards */}
-            <div className="p-2 space-y-2 min-h-[100px]">
-              {stageLeads.map((lead) => (
-                <Card
-                  key={lead.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, lead.id)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => onSelectLead(lead)}
-                  className={`p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-                    draggedLeadId === lead.id ? "opacity-50" : ""
-                  }`}
-                >
-                  <p className="font-medium text-sm truncate">{lead.company}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    <Badge variant="outline" className="text-xs">
-                      {lead.segment}
-                    </Badge>
-                    {lead.lastAttempt && (
-                      <Badge variant="secondary" className="text-xs">
-                        {lead.lastAttempt.outcome.replace("DM reached → ", "")}
-                      </Badge>
+            <div className="p-2 space-y-2 min-h-[100px] max-h-[60vh] overflow-y-auto">
+              {(() => {
+                const isExpanded = expandedStages.has(stage.name)
+                const visible = isExpanded ? stageLeads : stageLeads.slice(0, INITIAL_VISIBLE)
+                const hiddenCount = stageLeads.length - visible.length
+                return (
+                  <>
+                    {visible.map((lead) => (
+                      <Card
+                        key={lead.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, lead.id)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => onSelectLead(lead)}
+                        className={`p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                          draggedLeadId === lead.id ? "opacity-50" : ""
+                        }`}
+                      >
+                        <p className="font-medium text-sm truncate">{lead.company}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            {lead.segment}
+                          </Badge>
+                          {lead.lastAttempt && (
+                            <Badge variant="secondary" className="text-xs">
+                              {lead.lastAttempt.outcome.replace("DM reached → ", "")}
+                            </Badge>
+                          )}
+                        </div>
+                        {lead.phone && (
+                          <div className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3" />
+                            <span>{lead.phone}</span>
+                          </div>
+                        )}
+                        {lead.dealValue != null && lead.dealValue > 0 && (
+                          <p className="text-xs font-medium text-green-600 mt-1">
+                            ${lead.dealValue.toLocaleString()}
+                          </p>
+                        )}
+                      </Card>
+                    ))}
+                    {hiddenCount > 0 && (
+                      <button
+                        className="w-full text-xs text-primary hover:underline py-2"
+                        onClick={() => setExpandedStages((prev) => new Set([...prev, stage.name]))}
+                      >
+                        Show {hiddenCount} more...
+                      </button>
                     )}
-                  </div>
-                  {lead.phone && (
-                    <div className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
-                      <Phone className="h-3 w-3" />
-                      <span>{lead.phone}</span>
-                    </div>
-                  )}
-                  {lead.dealValue != null && lead.dealValue > 0 && (
-                    <p className="text-xs font-medium text-green-600 mt-1">
-                      ${lead.dealValue.toLocaleString()}
-                    </p>
-                  )}
-                </Card>
-              ))}
+                  </>
+                )
+              })()}
 
               {stageLeads.length === 0 && (
                 <div className="flex items-center justify-center h-20 text-xs text-muted-foreground">
