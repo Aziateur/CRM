@@ -6,21 +6,24 @@ import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Phone } from "lucide-react"
-import type { PipelineStage, Attempt } from "@/lib/store"
+import type { PipelineStage, Attempt, Tag } from "@/lib/store"
 import { getEffectiveStage } from "@/lib/store"
 import type { LeadWithDerived } from "@/components/leads-table"
+import { TagBadges } from "@/components/tag-manager"
 
 interface KanbanBoardProps {
   leads: LeadWithDerived[]
   stages: PipelineStage[]
   attempts: Attempt[]
+  tags?: Tag[]
+  leadTagsMap?: Record<string, string[]>
   onSelectLead: (lead: LeadWithDerived) => void
   onLeadUpdated: (lead: LeadWithDerived) => void
 }
 
 const INITIAL_VISIBLE = 50
 
-export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadUpdated }: KanbanBoardProps) {
+export function KanbanBoard({ leads, stages, attempts, tags = [], leadTagsMap = {}, onSelectLead, onLeadUpdated }: KanbanBoardProps) {
   const { toast } = useToast()
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null)
   const [dragOverStage, setDragOverStage] = useState<string | null>(null)
@@ -159,6 +162,11 @@ export function KanbanBoard({ leads, stages, attempts, onSelectLead, onLeadUpdat
                         }`}
                       >
                         <p className="font-medium text-sm truncate">{lead.company}</p>
+                        {tags.length > 0 && leadTagsMap[lead.id] && (
+                          <div className="mt-0.5">
+                            <TagBadges tags={tags} tagIds={leadTagsMap[lead.id]} />
+                          </div>
+                        )}
                         <div className="flex items-center gap-1 mt-1">
                           <Badge variant="outline" className="text-xs">
                             {lead.segment}

@@ -11,9 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { Lead, Attempt, AttemptOutcome, DerivedStage, DerivedStatus, PipelineStage, FieldDefinition } from "@/lib/store"
+import type { Lead, Attempt, AttemptOutcome, DerivedStage, DerivedStatus, PipelineStage, FieldDefinition, Tag } from "@/lib/store"
 import { getDerivedStage, getDerivedStatus, getEffectiveStage } from "@/lib/store"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TagBadges } from "@/components/tag-manager"
 
 const getOutcomeColor = (outcome: AttemptOutcome) => {
   const colors: Record<AttemptOutcome, string> = {
@@ -55,6 +56,8 @@ interface LeadsTableProps {
   stages?: PipelineStage[]
   attempts?: Attempt[]
   fieldDefinitions?: FieldDefinition[]
+  tags?: Tag[]
+  leadTagsMap?: Record<string, string[]>
   onSelectLead: (lead: LeadWithDerived) => void
   selectedIds?: Set<string>
   onSelectionChange?: (ids: Set<string>) => void
@@ -82,7 +85,7 @@ function TableSkeleton() {
   )
 }
 
-export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDefinitions = [], onSelectLead, selectedIds, onSelectionChange }: LeadsTableProps) {
+export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDefinitions = [], tags = [], leadTagsMap = {}, onSelectLead, selectedIds, onSelectionChange }: LeadsTableProps) {
   // Show up to 3 custom field columns
   const visibleFields = fieldDefinitions.slice(0, 3)
   const hasSelection = selectedIds !== undefined && onSelectionChange !== undefined
@@ -158,7 +161,12 @@ export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDe
                     />
                   </TableCell>
                 )}
-                <TableCell className="font-medium">{lead.company}</TableCell>
+                <TableCell className="font-medium">
+                  <div>{lead.company}</div>
+                  {tags.length > 0 && leadTagsMap[lead.id] && (
+                    <TagBadges tags={tags} tagIds={leadTagsMap[lead.id]} />
+                  )}
+                </TableCell>
                 <TableCell>
                   {lead.phone ? (
                     <a
