@@ -1,13 +1,22 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
+import { DialContextPanel } from "@/components/dial-context-panel"
+import { DialScriptPanel } from "@/components/dial-script-panel"
+import { useLeads } from "@/hooks/use-leads"
+import { useAttempts } from "@/hooks/use-attempts"
+import { useTasks } from "@/hooks/use-tasks"
+import { useDialQueue } from "@/hooks/use-dial-queue"
+import { useDialSession } from "@/hooks/use-dial-session"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -16,62 +25,36 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert"
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Phone,
   PhoneOff,
-  AlertTriangle,
-  Target,
-  Clock,
   Building2,
   User,
   Play,
   SkipForward,
   XCircle,
   ChevronDown,
-  Keyboard
+  Keyboard,
+  Clock,
+  Zap,
+  RotateCcw,
 } from "lucide-react"
-import { TemplateQuickPick } from "@/components/template-manager"
-import { useLeads } from "@/hooks/use-leads"
-import { useAttempts } from "@/hooks/use-attempts"
 import {
-  experiments,
-  drills,
-  stopSignals,
-  getDialableLeads,
   getDefaultNextAction,
+  getDefaultTaskForOutcome,
   isDmReached,
-  checkStopSignals,
   calculateSessionMetrics,
   attemptOutcomeOptions,
   whyReasonOptions,
   repMistakeOptions,
-  nextActionOptions,
-  type Lead,
   type Attempt,
   type AttemptOutcome,
   type WhyReason,
   type RepMistake,
-  type NextAction,
-  type Drill,
 } from "@/lib/store"
 
 // Outcome colors for pills
@@ -83,64 +66,90 @@ const outcomeStyles: Record<AttemptOutcome, string> = {
   "Meeting set": "border-green-500 hover:bg-green-50 data-[selected=true]:bg-green-100 data-[selected=true]:border-green-600",
 }
 
+const followUpOptions = [
+  { label: "1d", days: 1 },
+  { label: "2d", days: 2 },
+  { label: "1w", days: 7 },
+  { label: "2w", days: 14 },
+]
+
+type SessionState = "setup" | "dialing" | "logging"
+
 export default function DialSessionPage() {
   const router = useRouter()
-  
-  // Data state (shared hooks)
+
+  // Data hooks
   const { leads } = useLeads({ withContacts: true })
-  const { attempts: allAttemptsList, setAttempts: setAllAttemptsList } = useAttempts()
-  const [sessionAttempts, setSessionAttempts] = useState<Attempt[]>([])
-  
-  // Session state
-  const [isSessionActive, setIsSessionActive] = useState(false)
+  const { attempts: allAttempts, setAttempts: setAllAttempts } = useAttempts()
+  const { tasks: allTasks, refetch: refetchTasks } = useTasks()
+
+  // Dial queue
+  const { queue } = useDialQueue(leads, allAttempts, allTasks)
+
+  // Session persistence
+  const {
+    session: persistedSession,
+    loading: sessionLoading,
+    hasActiveSession,
+    startSession: startPersistedSession,
+    updateCurrentLead,
+    endSession: endPersistedSession,
+    abandonSession,
+  } = useDialSession()
+
+  // Local state
+  const [pageState, setPageState] = useState<SessionState>("setup")
   const [sessionTarget, setSessionTarget] = useState(20)
   const [selectedExperiment, setSelectedExperiment] = useState<string>("none")
-  
-  // Current call state
-  const [currentLeadIndex, setCurrentLeadIndex] = useState(0)
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0)
+  const [sessionAttempts, setSessionAttempts] = useState<Attempt[]>([])
+
+  // Call state
   const [isOnCall, setIsOnCall] = useState(false)
   const [callStartTime, setCallStartTime] = useState<Date | null>(null)
   const [callDuration, setCallDuration] = useState(0)
-  
-  // Current attempt ID for updating
-  const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null)
 
-  // Log attempt modal - SPEED OPTIMIZED
-  const [isLogOpen, setIsLogOpen] = useState(false)
+  // Log state
   const [selectedOutcome, setSelectedOutcome] = useState<AttemptOutcome | null>(null)
   const [selectedWhy, setSelectedWhy] = useState<WhyReason | null>(null)
   const [selectedRepMistake, setSelectedRepMistake] = useState<RepMistake | null>(null)
-  const [nextActionOverride, setNextActionOverride] = useState<NextAction | null>(null)
-  const [showDetail, setShowDetail] = useState(false)
+  const [followUpDays, setFollowUpDays] = useState<number | null>(null)
+  const [customFollowUpDays, setCustomFollowUpDays] = useState("")
   const [noteText, setNoteText] = useState("")
-  
-  // Drill state
-  const [activeDrill, setActiveDrill] = useState<Drill | null>(null)
-  const [drillRemainingCount, setDrillRemainingCount] = useState(0)
-  const [showDrillAlert, setShowDrillAlert] = useState(false)
-  const [triggeredSignal, setTriggeredSignal] = useState<ReturnType<typeof checkStopSignals>>(null)
-  
-  // Pending attempt for OpenPhone integration
-  const [pendingAttemptId, setPendingAttemptId] = useState<string | null>(null)
-  
-  // Setup dialog
-  const [showSetupDialog, setShowSetupDialog] = useState(true)
+  const [showDetail, setShowDetail] = useState(false)
 
-  const dialableLeads = getDialableLeads(leads, allAttemptsList)
-  const currentLead = dialableLeads[currentLeadIndex]
-  
-  // Computed next action
-  const computedNextAction = selectedOutcome 
-    ? getDefaultNextAction(selectedOutcome, selectedWhy || undefined)
-    : "Call back"
-  const finalNextAction = nextActionOverride || computedNextAction
+  // Session start time for pace calc
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null)
 
-  // Should show "Why" field - only when "DM reached → No interest"
+  // Current queue item
+  const currentItem = queue[currentQueueIndex] || null
+  const currentLead = currentItem?.lead || null
+
+  // Derived
   const showWhyField = selectedOutcome === "DM reached → No interest"
-  
-  // Rep Mistake is now an optional toggle, always available when outcome selected
-  const showRepMistakeField = selectedOutcome != null
-  const canShowRepMistake = selectedOutcome != null
+  const computedNextAction = selectedOutcome
+    ? getDefaultNextAction(selectedOutcome, selectedWhy || undefined)
+    : "Call again"
+  const needsFollowUp = computedNextAction === "Call again" || computedNextAction === "Follow up"
+  const canSave = selectedOutcome && (!showWhyField || selectedWhy)
+
+  // Default follow-up days from outcome
+  const defaultFollowUpDays = useMemo(() => {
+    if (!selectedOutcome) return null
+    const taskDef = getDefaultTaskForOutcome(selectedOutcome, selectedWhy || undefined, "")
+    return taskDef?.dueDays ?? null
+  }, [selectedOutcome, selectedWhy])
+
+  // Effective follow-up days (user override or default)
+  const effectiveFollowUpDays = followUpDays ?? defaultFollowUpDays
+
+  // Pace: calls per hour
+  const pace = useMemo(() => {
+    if (!sessionStartTime || sessionAttempts.length === 0) return null
+    const hoursElapsed = (Date.now() - sessionStartTime.getTime()) / (1000 * 60 * 60)
+    if (hoursElapsed < 0.01) return null
+    return Math.round((sessionAttempts.length / hoursElapsed) * 10) / 10
+  }, [sessionStartTime, sessionAttempts])
 
   // Call timer
   useEffect(() => {
@@ -153,165 +162,109 @@ export default function DialSessionPage() {
     return () => clearInterval(interval)
   }, [isOnCall, callStartTime])
 
-  // Check stop signals after logging
-  useEffect(() => {
-    if (sessionAttempts.length > 0 && sessionAttempts.length % 5 === 0) {
-      const triggered = checkStopSignals(sessionAttempts, stopSignals, drills)
-      if (triggered && !activeDrill) {
-        setTriggeredSignal(triggered)
-        setShowDrillAlert(true)
-      }
-    }
-  }, [sessionAttempts])
-
-  // Function to initiate a call and register pending attempt
-  const initiateCall = useCallback(async () => {
-    if (!currentLead?.phone) return
-    
-    // Format phone to E.164 (assuming it's already formatted or close)
-    const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
-
-    // 1) IMMEDIATELY open the call tab synchronously
-    const w = window.open(`tel:${e164Number}`, '_blank', 'noopener,noreferrer')
-    if (!w) {
-        alert("Popup blocked. Please allow popups for this site to launch the dialer.")
-    }
-
-    // 2) Copy phone to clipboard (background)
-    try {
-        await navigator.clipboard.writeText(e164Number)
-    } catch (err) {
-        console.error('Failed to copy phone number', err)
-    }
-
-    // 3) Sandbox only: Create attempt and call_session (background)
-    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
-        const supabase = getSupabase()
-        
-        // Non-blocking inserts
-        supabase.from('attempts').insert([{
-            lead_id: currentLead.id,
-            timestamp: new Date().toISOString(),
-            outcome: 'No connect',
-            dm_reached: false,
-            next_action: 'Call again',
-            duration_sec: 0
-        }]).select().single().then(({ data: attempt, error: attemptError }) => {
-            if (attemptError) {
-                console.error("Error creating attempt:", attemptError)
-                return
-            }
-            if (attempt) {
-                supabase.from('call_sessions').insert([{
-                    attempt_id: attempt.id,
-                    lead_id: currentLead.id,
-                    phone_e164: e164Number,
-                    direction: 'outgoing',
-                    status: 'initiated',
-                    started_at: new Date().toISOString()
-                }]).then(({ error }) => {
-                    if (error) console.error("Error creating call session:", error)
-                })
-            }
-        })
-    }
-    
-    // Create pending attempt for OpenPhone webhook matching
-    const attemptId = `pending-${Date.now()}`
-    setPendingAttemptId(attemptId)
-    
-    console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
-    
-    // Start the call timer
-    startCall()
-  }, [currentLead])
-
-  // Keyboard shortcuts for speed
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // "D" to dial current lead (when not in log modal)
-    if (e.key === "d" || e.key === "D") {
-      if (!isLogOpen && !isOnCall && currentLead?.phone) {
-        e.preventDefault()
-        initiateCall()
-      }
-    }
-    
-    if (!isLogOpen) return
-    
-    // Number keys 1-5 for outcome selection
-    if (e.key >= "1" && e.key <= "5" && !showWhyField) {
-      const index = parseInt(e.key) - 1
-      if (index < attemptOutcomeOptions.length) {
-        setSelectedOutcome(attemptOutcomeOptions[index])
-      }
-    }
-    
-    // Enter to save (if valid)
-    if (e.key === "Enter" && canSave) {
-      e.preventDefault()
-      logAttempt()
-    }
-  }, [isLogOpen, showWhyField, isOnCall, currentLead, initiateCall])
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [handleKeyDown])
-
-  // Reset form when outcome changes
+  // Reset log form when outcome changes
   useEffect(() => {
     setSelectedWhy(null)
     setSelectedRepMistake(null)
-    setNextActionOverride(null)
+    setFollowUpDays(null)
+    setCustomFollowUpDays("")
   }, [selectedOutcome])
 
-  // Rep mistake no longer tied to why, but reset when changing outcome
+  // Update persisted session when lead changes
   useEffect(() => {
-    setSelectedRepMistake(null)
-  }, [selectedOutcome])
+    if (currentLead && pageState === "dialing") {
+      updateCurrentLead(currentLead.id)
+    }
+  }, [currentLead?.id, pageState])
 
-  const startSession = () => {
-    setIsSessionActive(true)
-    setSessionAttempts([])
-    setCurrentLeadIndex(0)
-    setShowSetupDialog(false)
+  // Session metrics
+  const sessionMetrics = calculateSessionMetrics(sessionAttempts)
+  const progress = sessionTarget > 0 ? (sessionAttempts.length / sessionTarget) * 100 : 0
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  const endSession = () => {
-    setIsSessionActive(false)
+  // --- Actions ---
+
+  const handleStartSession = async () => {
+    await startPersistedSession(sessionTarget, selectedExperiment === "none" ? undefined : selectedExperiment)
+    setSessionStartTime(new Date())
+    setSessionAttempts([])
+    setCurrentQueueIndex(0)
+    setPageState("dialing")
+  }
+
+  const handleResumeSession = async () => {
+    // Find the lead in the queue that matches the persisted session
+    if (persistedSession?.currentLeadId) {
+      const idx = queue.findIndex((q) => q.lead.id === persistedSession.currentLeadId)
+      setCurrentQueueIndex(idx >= 0 ? idx : 0)
+    }
+    setSessionTarget(persistedSession?.target || 20)
+    setSelectedExperiment(persistedSession?.experiment || "none")
+    setSessionStartTime(new Date(persistedSession?.startedAt || Date.now()))
+    setSessionAttempts([])
+    setPageState("dialing")
+  }
+
+  const handleAbandonSession = async () => {
+    await abandonSession()
+    setPageState("setup")
+  }
+
+  const handleEndSession = async () => {
+    await endPersistedSession()
     setIsOnCall(false)
     setCallStartTime(null)
     setCallDuration(0)
-    // Navigate to batch review with session data
     router.push("/batch-review")
   }
 
-  const startCall = () => {
+  const initiateCall = useCallback(async () => {
+    if (!currentLead?.phone) return
+
+    const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
+
+    // Open tel: link
+    const w = window.open(`tel:${e164Number}`, "_blank", "noopener,noreferrer")
+    if (!w) {
+      alert("Popup blocked. Please allow popups for this site to launch the dialer.")
+    }
+
+    // Copy to clipboard
+    try {
+      await navigator.clipboard.writeText(e164Number)
+    } catch {
+      // non-critical
+    }
+
+    // Start call timer
     setIsOnCall(true)
     setCallStartTime(new Date())
     setCallDuration(0)
-  }
+  }, [currentLead])
 
   const endCall = () => {
     setIsOnCall(false)
-    setIsLogOpen(true)
-    // Reset form
+    setPageState("logging")
+    // Reset log form
     setSelectedOutcome(null)
     setSelectedWhy(null)
     setSelectedRepMistake(null)
-    setNextActionOverride(null)
+    setFollowUpDays(null)
+    setCustomFollowUpDays("")
     setShowDetail(false)
     setNoteText("")
   }
 
   const skipLead = () => {
-    if (currentLeadIndex < dialableLeads.length - 1) {
-      setCurrentLeadIndex(currentLeadIndex + 1)
+    if (currentQueueIndex < queue.length - 1) {
+      setCurrentQueueIndex(currentQueueIndex + 1)
     }
   }
-
-  // Can save if: outcome selected + (why selected if required for DM No Interest)
-  const canSave = selectedOutcome && (!showWhyField || selectedWhy)
 
   const logAttempt = async () => {
     if (!currentLead || !selectedOutcome || !canSave) return
@@ -323,200 +276,237 @@ export default function DialSessionPage() {
       why: selectedWhy || null,
       rep_mistake: selectedRepMistake || null,
       dm_reached: isDmReached(selectedOutcome),
-      next_action: finalNextAction,
+      next_action: computedNextAction,
       note: noteText || null,
       experiment_tag: selectedExperiment === "none" ? null : selectedExperiment,
-      session_id: `session-${Date.now()}`,
+      session_id: persistedSession?.id || null,
       duration_sec: callDuration,
     }
 
     const supabase = getSupabase()
-    
-    let result;
-    
-    // Update existing attempt if we have one (from initiateCall)
-    if (currentAttemptId) {
-        console.log("Updating existing attempt:", currentAttemptId)
-        result = await supabase
-            .from('attempts')
-            .update(attemptData)
-            .eq('id', currentAttemptId)
-            .select()
-            .single()
-            
-        // Reset for next call
-        setCurrentAttemptId(null)
-    } else {
-        // Create new attempt if we didn't call (just logging)
-        console.log("Creating new attempt (no call initiated)")
-        result = await supabase
-            .from('attempts')
-            .insert([attemptData])
-            .select()
-            .single()
-    }
+    const { data, error } = await supabase
+      .from("attempts")
+      .insert([attemptData])
+      .select()
+      .single()
 
-    const { data, error } = result
-    
     if (error) {
-        console.error("Error logging attempt:", error)
-        return
+      console.error("Error logging attempt:", error)
+      return
     }
 
     if (data) {
-        // Fetch artifacts associated with this attempt (if any) via the view
-        // We do this to ensure the local state has the recording/transcript if available
-        let artifacts = { recording_url: null, transcript_text: null }
-        if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
-             const { data: artifactData } = await supabase
-                .from('v_calls_with_artifacts')
-                .select('recording_url, transcript_text')
-                .eq('attempt_id', data.id)
-                .single()
-             
-             if (artifactData) {
-                 artifacts = artifactData
-             }
-        }
+      const attempt: Attempt = {
+        id: data.id,
+        leadId: data.lead_id,
+        timestamp: data.timestamp,
+        outcome: data.outcome,
+        why: data.why,
+        repMistake: data.rep_mistake,
+        dmReached: data.dm_reached,
+        nextAction: data.next_action,
+        note: data.note,
+        experimentTag: data.experiment_tag,
+        sessionId: data.session_id,
+        durationSec: data.duration_sec,
+        createdAt: data.created_at,
+      }
 
-        const attempt: Attempt = {
-            id: data.id,
-            leadId: data.lead_id,
-            timestamp: data.timestamp,
-            outcome: data.outcome,
-            why: data.why,
-            repMistake: data.rep_mistake,
-            dmReached: data.dm_reached,
-            nextAction: data.next_action,
-            note: data.note,
-            experimentTag: data.experiment_tag,
-            sessionId: data.session_id,
-            durationSec: data.duration_sec,
-            createdAt: data.created_at,
-            recordingUrl: artifacts.recording_url || undefined,
-            transcript: artifacts.transcript_text ? [{ speaker: 'mixed', startSec: 0, endSec: 0, content: artifacts.transcript_text }] : undefined
-        }
+      setSessionAttempts((prev) => [attempt, ...prev])
+      setAllAttempts((prev) => [attempt, ...prev])
 
-        setSessionAttempts([attempt, ...sessionAttempts])
-        setAllAttemptsList([attempt, ...allAttemptsList])
-        
-        // Decrease drill count if active
-        if (activeDrill && drillRemainingCount > 0) {
-            const newCount = drillRemainingCount - 1
-            setDrillRemainingCount(newCount)
-            if (newCount === 0) {
-                setActiveDrill(null)
-            }
+      // Auto-create follow-up task with user's chosen delay
+      if (needsFollowUp && effectiveFollowUpDays) {
+        const taskDef = getDefaultTaskForOutcome(selectedOutcome, selectedWhy || undefined, currentLead.company)
+        if (taskDef) {
+          const dueAt = new Date()
+          dueAt.setDate(dueAt.getDate() + effectiveFollowUpDays)
+          supabase
+            .from("tasks")
+            .insert([{
+              lead_id: currentLead.id,
+              attempt_id: data.id,
+              type: taskDef.type,
+              title: taskDef.title,
+              due_at: dueAt.toISOString(),
+              priority: "normal",
+            }])
+            .then(({ error: taskError }) => {
+              if (taskError) console.warn("[auto-task] Skipped:", taskError.message)
+              else refetchTasks()
+            })
         }
+      }
 
-        // Close modal and advance
-        setIsLogOpen(false)
-        setCallDuration(0)
-        
-        if (currentLeadIndex < dialableLeads.length - 1) {
-            setCurrentLeadIndex(currentLeadIndex + 1)
-        }
+      // Advance to next lead
+      setCallDuration(0)
+      setPageState("dialing")
+      if (currentQueueIndex < queue.length - 1) {
+        setCurrentQueueIndex(currentQueueIndex + 1)
+      }
     }
   }
 
-  const acceptDrill = () => {
-    if (triggeredSignal) {
-      setActiveDrill(triggeredSignal.drill)
-      setDrillRemainingCount(triggeredSignal.drill.durationCount)
-    }
-    setShowDrillAlert(false)
-    setTriggeredSignal(null)
-  }
+  // Keyboard shortcuts
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") return
 
-  const snoozeDrill = () => {
-    setShowDrillAlert(false)
-    setTriggeredSignal(null)
-  }
+      if (pageState === "dialing" && !isOnCall) {
+        // D to dial
+        if (e.key === "d" || e.key === "D") {
+          e.preventDefault()
+          if (currentLead?.phone) initiateCall()
+        }
+        // S to skip
+        if (e.key === "s" || e.key === "S") {
+          e.preventDefault()
+          skipLead()
+        }
+      }
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
+      if (pageState === "dialing" && isOnCall) {
+        // E to end call
+        if (e.key === "e" || e.key === "E") {
+          e.preventDefault()
+          endCall()
+        }
+      }
 
-  const sessionMetrics = calculateSessionMetrics(sessionAttempts)
-  const progress = (sessionAttempts.length / sessionTarget) * 100
+      if (pageState === "logging") {
+        // 1-5 for outcome
+        if (e.key >= "1" && e.key <= "5" && !showWhyField) {
+          const index = parseInt(e.key) - 1
+          if (index < attemptOutcomeOptions.length) {
+            setSelectedOutcome(attemptOutcomeOptions[index])
+          }
+        }
+        // Enter to save
+        if (e.key === "Enter" && canSave) {
+          e.preventDefault()
+          logAttempt()
+        }
+      }
+    },
+    [pageState, isOnCall, currentLead, showWhyField, canSave, initiateCall],
+  )
 
-  // Setup dialog
-  if (showSetupDialog) {
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [handleKeyDown])
+
+  // --- Setup Screen ---
+  if (pageState === "setup") {
     return (
       <div className="flex flex-col min-h-screen">
         <Topbar title="Dial Session" />
         <div className="flex-1 p-6 flex items-center justify-center">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Start Dial Session</CardTitle>
-              <CardDescription>Set your target and begin dialing</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-2">
-                <Label>Call Target</Label>
-                <Select
-                  value={sessionTarget.toString()}
-                  onValueChange={(value) => setSessionTarget(parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 calls</SelectItem>
-                    <SelectItem value="20">20 calls</SelectItem>
-                    <SelectItem value="50">50 calls</SelectItem>
-                    <SelectItem value="100">100 calls</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid gap-2">
-                <Label>Experiment (optional)</Label>
-                <Select
-                  value={selectedExperiment}
-                  onValueChange={setSelectedExperiment}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No experiment" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No experiment</SelectItem>
-                    {experiments.filter(e => e.active).map((exp) => (
-                      <SelectItem key={exp.id} value={exp.id}>{exp.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground mb-1">Available leads:</p>
-                <p className="text-2xl font-bold">{dialableLeads.length}</p>
-              </div>
+          <div className="w-full max-w-md space-y-4">
+            {/* Resume Card */}
+            {hasActiveSession && persistedSession && !sessionLoading && (
+              <Card className="border-primary/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <RotateCcw className="h-5 w-5 text-primary" />
+                    Resume Session?
+                  </CardTitle>
+                  <CardDescription>
+                    You have an active session from{" "}
+                    {new Date(persistedSession.startedAt).toLocaleString()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-3 mb-4 text-sm text-muted-foreground">
+                    <span>Target: {persistedSession.target || "—"}</span>
+                    {persistedSession.experiment && (
+                      <Badge variant="outline">{persistedSession.experiment}</Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button className="flex-1" onClick={handleResumeSession}>
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Resume
+                    </Button>
+                    <Button variant="outline" className="bg-transparent" onClick={handleAbandonSession}>
+                      Abandon
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 bg-transparent" onClick={() => router.push("/")}>
-                  Cancel
-                </Button>
-                <Button className="flex-1" onClick={startSession} disabled={dialableLeads.length === 0}>
-                  <Play className="mr-2 h-4 w-4" />
-                  Start Session
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            {/* New Session Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {hasActiveSession ? "Or Start Fresh" : "Start Dial Session"}
+                </CardTitle>
+                <CardDescription>Set your target and begin dialing</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2">
+                  <Label>Call Target</Label>
+                  <Select
+                    value={sessionTarget.toString()}
+                    onValueChange={(v) => setSessionTarget(parseInt(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 calls</SelectItem>
+                      <SelectItem value="20">20 calls</SelectItem>
+                      <SelectItem value="50">50 calls</SelectItem>
+                      <SelectItem value="100">100 calls</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-1">Queue ready:</p>
+                  <p className="text-2xl font-bold">{queue.length} leads</p>
+                  {queue.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      First up: {queue[0].lead.company} — {queue[0].reason}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 bg-transparent"
+                    onClick={() => router.push("/")}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleStartSession}
+                    disabled={queue.length === 0}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Session
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     )
   }
 
+  // --- Active Session (Dialing + Logging) ---
   return (
     <div className="flex flex-col min-h-screen">
-      <Topbar 
-        title="Dial Session" 
+      <Topbar
+        title="Dial Session"
         actions={
-          <Button variant="destructive" onClick={endSession}>
+          <Button variant="destructive" onClick={handleEndSession}>
             <XCircle className="mr-2 h-4 w-4" />
             End Session
           </Button>
@@ -524,163 +514,356 @@ export default function DialSessionPage() {
       />
 
       <div className="flex-1 p-6 max-w-4xl mx-auto w-full">
-        {/* Stop Signal Alert */}
-        {showDrillAlert && triggeredSignal && (
-          <Alert className="mb-6 border-amber-500 bg-amber-50">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-800">{triggeredSignal.signal.name}</AlertTitle>
-            <AlertDescription className="text-amber-700">
-              {triggeredSignal.signal.description}
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" onClick={acceptDrill}>
-                  Start Drill: {triggeredSignal.drill.name} ({triggeredSignal.drill.durationCount} calls)
-                </Button>
-                <Button size="sm" variant="outline" onClick={snoozeDrill}>
-                  Snooze (20 calls)
-                </Button>
+        {/* Session Progress Bar */}
+        <Card className="mb-4">
+          <CardContent className="pt-4 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-4">
+                <div>
+                  <p className="text-2xl font-bold tabular-nums">
+                    {sessionAttempts.length} / {sessionTarget}
+                  </p>
+                  <p className="text-xs text-muted-foreground">calls logged</p>
+                </div>
+                {pace && (
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <Zap className="h-4 w-4" />
+                    <span className="font-medium tabular-nums">{pace}</span>
+                    <span>calls/hr</span>
+                  </div>
+                )}
               </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Active Drill Banner */}
-        {activeDrill && (
-          <Alert className="mb-6 border-primary bg-primary/5">
-            <Target className="h-4 w-4 text-primary" />
-            <AlertTitle>Current Drill: {activeDrill.name} ({drillRemainingCount} remaining)</AlertTitle>
-            <AlertDescription>
-              <p className="mb-2">{activeDrill.instructions}</p>
-              {activeDrill.script && (
-                <p className="italic text-sm bg-background p-2 rounded border">{activeDrill.script}</p>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Session Progress */}
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Progress</p>
-                <p className="text-2xl font-bold">{sessionAttempts.length} / {sessionTarget}</p>
-              </div>
-              <div className="grid grid-cols-4 gap-6 text-center">
+              <div className="grid grid-cols-4 gap-4 text-center">
                 <div>
-                  <p className="text-xl font-bold">{sessionMetrics.connectRate}%</p>
-                  <p className="text-xs text-muted-foreground">Connect</p>
+                  <p className="text-lg font-bold tabular-nums">{sessionMetrics.connectRate}%</p>
+                  <p className="text-[10px] text-muted-foreground">Connect</p>
                 </div>
                 <div>
-                  <p className="text-xl font-bold">{sessionMetrics.dmReachRate}%</p>
-                  <p className="text-xs text-muted-foreground">DM Reach</p>
+                  <p className="text-lg font-bold tabular-nums">{sessionMetrics.dmReachRate}%</p>
+                  <p className="text-[10px] text-muted-foreground">DM Reach</p>
                 </div>
                 <div>
-                  <p className="text-xl font-bold">{sessionMetrics.interestRate}%</p>
-                  <p className="text-xs text-muted-foreground">Interest</p>
+                  <p className="text-lg font-bold tabular-nums">{sessionMetrics.interestRate}%</p>
+                  <p className="text-[10px] text-muted-foreground">Interest</p>
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-green-600">{sessionMetrics.meetingsSet}</p>
-                  <p className="text-xs text-muted-foreground">Meetings</p>
+                  <p className="text-lg font-bold text-green-600 tabular-nums">{sessionMetrics.meetingsSet}</p>
+                  <p className="text-[10px] text-muted-foreground">Meetings</p>
                 </div>
               </div>
             </div>
-            <Progress value={progress} className="h-2" />
+            <Progress value={progress} className="h-1.5" />
           </CardContent>
         </Card>
 
-        {/* Current Lead Card */}
         {currentLead ? (
-          <Card className="mb-6">
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <Building2 className="h-5 w-5" />
-                    {currentLead.company}
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    {currentLead.segment}
-                    {currentLead.isDecisionMaker === "yes" && " • DM"}
-                    {currentLead.isFleetOwner === "yes" && " • Fleet Owner"}
-                  </CardDescription>
-                </div>
-                <Badge variant="outline">
-                  {currentLeadIndex + 1} / {Math.min(dialableLeads.length, sessionTarget)}
+          <>
+            {/* Reason Badge */}
+            {currentItem && (
+              <div className="mb-2 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs font-normal">
+                  {currentItem.reason}
                 </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {currentQueueIndex + 1} of {queue.length} in queue
+                </span>
               </div>
-            </CardHeader>
-            <CardContent>
-              {/* Phone number - prominent */}
-              {currentLead.phone && (
-                <a
-                  href={`tel:${currentLead.phone}`}
-                  className="flex items-center gap-3 text-3xl font-mono text-primary hover:underline mb-4"
-                >
-                  <Phone className="h-7 w-7" />
-                  {currentLead.phone}
-                </a>
-              )}
+            )}
 
-              {/* Contacts */}
-              {currentLead.contacts.length > 0 && (
-                <div className="mb-4 flex flex-wrap gap-2">
-                  {currentLead.contacts.map((contact) => (
-                    <div key={contact.id} className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-full">
-                      <User className="h-4 w-4" />
-                      <span className="text-sm font-medium">{contact.name}</span>
-                      <Badge variant="secondary" className="text-xs">{contact.role}</Badge>
-                    </div>
-                  ))}
+            {/* Lead Card */}
+            <Card className="mb-4">
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Building2 className="h-5 w-5" />
+                      {currentLead.company}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      {currentLead.segment}
+                      {currentLead.isDecisionMaker === "yes" && " · DM"}
+                      {currentLead.isFleetOwner === "yes" && " · Fleet Owner"}
+                    </CardDescription>
+                  </div>
+                  {currentLead.stage && (
+                    <Badge variant="secondary">{currentLead.stage}</Badge>
+                  )}
                 </div>
-              )}
-
-              {/* Call timer */}
-              {isOnCall && (
-                <div className="flex items-center gap-2 text-2xl font-mono mb-4">
-                  <Clock className="h-6 w-6 text-red-500 animate-pulse" />
-                  <span>{formatDuration(callDuration)}</span>
-                </div>
-              )}
-
-              {/* Quick scripts */}
-              <div className="flex justify-end">
-                <TemplateQuickPick onSelect={(t) => { navigator.clipboard.writeText(t.body).catch(() => {}) }} />
-              </div>
-
-              {/* Call controls */}
-              <div className="flex gap-3">
-                {!isOnCall ? (
-                  <>
-                    <Button size="lg" className="flex-1 h-14 text-lg" onClick={initiateCall}>
-                      <Phone className="mr-2 h-5 w-5" />
-                      Dial (D)
-                    </Button>
-                    <Button size="lg" variant="outline" className="h-14 bg-transparent" onClick={skipLead}>
-                      <SkipForward className="mr-2 h-5 w-5" />
-                      Skip
-                    </Button>
-                  </>
-                ) : (
-                  <Button size="lg" variant="destructive" className="flex-1 h-14 text-lg" onClick={endCall}>
-                    <PhoneOff className="mr-2 h-5 w-5" />
-                    End Call & Log
-                  </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Phone */}
+                {currentLead.phone && (
+                  <a
+                    href={`tel:${currentLead.phone}`}
+                    className="flex items-center gap-3 text-3xl font-mono text-primary hover:underline"
+                  >
+                    <Phone className="h-7 w-7" />
+                    {currentLead.phone}
+                  </a>
                 )}
+
+                {/* Contacts */}
+                {currentLead.contacts.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {currentLead.contacts.map((contact) => (
+                      <div
+                        key={contact.id}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-full"
+                      >
+                        <User className="h-4 w-4" />
+                        <span className="text-sm font-medium">{contact.name}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {contact.role}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Call timer (when on call) */}
+                {isOnCall && (
+                  <div className="flex items-center gap-2 text-2xl font-mono">
+                    <Clock className="h-6 w-6 text-red-500 animate-pulse" />
+                    <span>{formatDuration(callDuration)}</span>
+                  </div>
+                )}
+
+                {/* Script Panel (visible during call) */}
+                <DialScriptPanel visible={isOnCall} />
+
+                {/* Call Controls */}
+                {pageState === "dialing" && (
+                  <div className="flex gap-3">
+                    {!isOnCall ? (
+                      <>
+                        <Button
+                          size="lg"
+                          className="flex-1 h-14 text-lg"
+                          onClick={initiateCall}
+                        >
+                          <Phone className="mr-2 h-5 w-5" />
+                          Dial (D)
+                        </Button>
+                        <Button
+                          size="lg"
+                          variant="outline"
+                          className="h-14 bg-transparent"
+                          onClick={skipLead}
+                        >
+                          <SkipForward className="mr-2 h-5 w-5" />
+                          Skip (S)
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="lg"
+                        variant="destructive"
+                        className="flex-1 h-14 text-lg"
+                        onClick={endCall}
+                      >
+                        <PhoneOff className="mr-2 h-5 w-5" />
+                        End Call & Log (E)
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Context Panel (pre-call) */}
+            {!isOnCall && pageState === "dialing" && (
+              <div className="mb-4">
+                <DialContextPanel lead={currentLead} attempts={allAttempts} />
               </div>
-            </CardContent>
-          </Card>
+            )}
+
+            {/* Inline Log Form (post-call) */}
+            {pageState === "logging" && (
+              <Card className="mb-4">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Log: {currentLead.company}</span>
+                    <span className="text-sm font-normal text-muted-foreground">
+                      {formatDuration(callDuration)}
+                    </span>
+                  </CardTitle>
+                  <CardDescription className="flex items-center gap-2">
+                    <Keyboard className="h-4 w-4" />
+                    Press 1-5 to select, Enter to save
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Outcome Selection */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Outcome *</Label>
+                    <div className="grid gap-2">
+                      {attemptOutcomeOptions.map((outcome, index) => (
+                        <button
+                          key={outcome}
+                          type="button"
+                          data-selected={selectedOutcome === outcome}
+                          onClick={() => setSelectedOutcome(outcome)}
+                          className={`flex items-center justify-between px-4 py-3 rounded-lg border-2 transition-colors text-left ${outcomeStyles[outcome]} ${selectedOutcome === outcome ? "ring-2 ring-offset-1 ring-primary" : ""}`}
+                        >
+                          <span className="font-medium">{outcome}</span>
+                          <span className="text-xs text-muted-foreground">{index + 1}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Why (conditional) */}
+                  {showWhyField && (
+                    <div className="space-y-2 animate-in slide-in-from-top-2">
+                      <Label className="text-sm font-medium">Why? *</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {whyReasonOptions.map((why) => (
+                          <button
+                            key={why}
+                            type="button"
+                            onClick={() => setSelectedWhy(why)}
+                            className={`px-3 py-2 rounded-lg border transition-colors text-sm ${selectedWhy === why ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}
+                          >
+                            {why}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rep Mistake (optional collapsible) */}
+                  {selectedOutcome && (
+                    <Collapsible>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="w-full justify-between">
+                          <span className="text-sm text-muted-foreground">
+                            {selectedRepMistake
+                              ? `Mistake: ${selectedRepMistake}`
+                              : "Was this a rep mistake? (optional)"}
+                          </span>
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          {repMistakeOptions.map((mistake) => (
+                            <button
+                              key={mistake}
+                              type="button"
+                              onClick={() =>
+                                setSelectedRepMistake(
+                                  selectedRepMistake === mistake ? null : mistake,
+                                )
+                              }
+                              className={`px-3 py-2 rounded-lg border transition-colors text-sm ${selectedRepMistake === mistake ? "border-red-500 bg-red-50 font-medium" : "border-border hover:bg-muted"}`}
+                            >
+                              {mistake}
+                            </button>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+
+                  {/* Follow-Up Timing (when action needs it) */}
+                  {selectedOutcome && needsFollowUp && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Follow up in:</Label>
+                      <div className="flex items-center gap-2">
+                        {followUpOptions.map((opt) => (
+                          <Button
+                            key={opt.days}
+                            type="button"
+                            size="sm"
+                            variant={
+                              (followUpDays ?? defaultFollowUpDays) === opt.days
+                                ? "default"
+                                : "outline"
+                            }
+                            className={
+                              (followUpDays ?? defaultFollowUpDays) === opt.days
+                                ? ""
+                                : "bg-transparent"
+                            }
+                            onClick={() => setFollowUpDays(opt.days)}
+                          >
+                            {opt.label}
+                          </Button>
+                        ))}
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={90}
+                            placeholder="custom"
+                            className="w-20 h-8 text-sm"
+                            value={customFollowUpDays}
+                            onChange={(e) => {
+                              setCustomFollowUpDays(e.target.value)
+                              const n = parseInt(e.target.value)
+                              if (n > 0) setFollowUpDays(n)
+                            }}
+                          />
+                          <span className="text-xs text-muted-foreground">days</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Note (optional collapsible) */}
+                  <Collapsible open={showDetail} onOpenChange={setShowDetail}>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="w-full justify-between">
+                        <span className="text-sm text-muted-foreground">
+                          Add note (optional)
+                        </span>
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${showDetail ? "rotate-180" : ""}`}
+                        />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-2">
+                      <Input
+                        placeholder="Quick note (max 120 chars)"
+                        maxLength={120}
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                      />
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  {/* Save / Cancel */}
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      className="bg-transparent"
+                      onClick={() => {
+                        setPageState("dialing")
+                        setCallDuration(0)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button className="flex-1" onClick={logAttempt} disabled={!canSave}>
+                      Save & Next (Enter)
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
         ) : (
-          <Card className="mb-6">
+          <Card className="mb-4">
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No more leads to dial.</p>
-              <Button className="mt-4" onClick={endSession}>
+              <p className="text-muted-foreground">No more leads in queue.</p>
+              <Button className="mt-4" onClick={handleEndSession}>
                 End Session & Review
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Recent Attempts (compact) */}
+        {/* Recent Attempts */}
         {sessionAttempts.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
@@ -688,15 +871,22 @@ export default function DialSessionPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {sessionAttempts.slice(0, 3).map((attempt) => {
-                  const lead = leads.find(l => l.id === attempt.leadId)
+                {sessionAttempts.slice(0, 5).map((attempt) => {
+                  const lead = leads.find((l) => l.id === attempt.leadId)
                   return (
-                    <div key={attempt.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <div
+                      key={attempt.id}
+                      className="flex items-center justify-between py-2 border-b last:border-0"
+                    >
                       <div className="flex items-center gap-3">
                         <span className="font-medium text-sm">{lead?.company}</span>
-                        <Badge variant="outline" className="text-xs">{attempt.outcome}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {attempt.outcome}
+                        </Badge>
                       </div>
-                      <span className="text-xs text-muted-foreground">{formatDuration(attempt.durationSec)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDuration(attempt.durationSec)}
+                      </span>
                     </div>
                   )
                 })}
@@ -705,136 +895,6 @@ export default function DialSessionPage() {
           </Card>
         )}
       </div>
-
-      {/* SPEED-OPTIMIZED LOG ATTEMPT MODAL */}
-      <Dialog open={isLogOpen} onOpenChange={setIsLogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>Log: {currentLead?.company}</span>
-              <span className="text-sm font-normal text-muted-foreground">{formatDuration(callDuration)}</span>
-            </DialogTitle>
-            <DialogDescription className="flex items-center gap-2">
-              <Keyboard className="h-4 w-4" />
-              Press 1-5 to select, Enter to save
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-2">
-            {/* Step 1: Outcome (REQUIRED) - Large pill buttons */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Outcome *</Label>
-              <div className="grid gap-2">
-                {attemptOutcomeOptions.map((outcome, index) => (
-                  <button
-                    key={outcome}
-                    type="button"
-                    data-selected={selectedOutcome === outcome}
-                    onClick={() => setSelectedOutcome(outcome)}
-                    className={`flex items-center justify-between px-4 py-3 rounded-lg border-2 transition-colors text-left ${outcomeStyles[outcome]} ${selectedOutcome === outcome ? "ring-2 ring-offset-1 ring-primary" : ""}`}
-                  >
-                    <span className="font-medium">{outcome}</span>
-                    <span className="text-xs text-muted-foreground">{index + 1}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Step 2: Why (CONDITIONAL) */}
-            {showWhyField && (
-              <div className="space-y-2 animate-in slide-in-from-top-2">
-                <Label className="text-sm font-medium">Why? *</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {whyReasonOptions.map((why) => (
-                    <button
-                      key={why}
-                      type="button"
-                      onClick={() => setSelectedWhy(why)}
-                      className={`px-3 py-2 rounded-lg border transition-colors text-sm ${selectedWhy === why ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}
-                    >
-                      {why}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Optional Rep Mistake (collapsible, always available) */}
-            {canShowRepMistake && (
-              <Collapsible>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="w-full justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {selectedRepMistake ? `Mistake: ${selectedRepMistake}` : "Was this a rep mistake? (optional)"}
-                    </span>
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    {repMistakeOptions.map((mistake) => (
-                      <button
-                        key={mistake}
-                        type="button"
-                        onClick={() => setSelectedRepMistake(selectedRepMistake === mistake ? null : mistake)}
-                        className={`px-3 py-2 rounded-lg border transition-colors text-sm ${selectedRepMistake === mistake ? "border-red-500 bg-red-50 font-medium" : "border-border hover:bg-muted"}`}
-                      >
-                        {mistake}
-                      </button>
-                    ))}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-
-            {/* Next Action (auto-computed with override) */}
-            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-              <span className="text-sm text-muted-foreground">Next:</span>
-              <Badge variant="secondary">{finalNextAction}</Badge>
-              <Select
-                value={nextActionOverride || ""}
-                onValueChange={(value) => setNextActionOverride(value as NextAction || null)}
-              >
-                <SelectTrigger className="w-24 h-7 text-xs">
-                  <SelectValue placeholder="Change" />
-                </SelectTrigger>
-                <SelectContent>
-                  {nextActionOptions.map((action) => (
-                    <SelectItem key={action} value={action}>{action}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Optional Detail (collapsed) */}
-            <Collapsible open={showDetail} onOpenChange={setShowDetail}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm" className="w-full justify-between">
-                  <span className="text-sm text-muted-foreground">Add detail (optional)</span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${showDetail ? "rotate-180" : ""}`} />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2">
-                <Input
-                  placeholder="Quick note (max 120 chars)"
-                  maxLength={120}
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                />
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsLogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={logAttempt} disabled={!canSave}>
-              Save & Next
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
