@@ -49,6 +49,18 @@ Expected output: [what to bring back]
 - **Environment variables**: Only `NEXT_PUBLIC_*` vars work in static export (they're baked into the JS bundle at build time). Never reference `process.env.SECRET_*` — it won't exist at runtime.
 - **Deployment**: Push to GitHub → Cloudflare Pages auto-builds and deploys. No manual deploy step.
 
+## TypeScript Idioms
+
+Follow the TypeScript language idioms guide at `docs/typescript-idioms.md`. Key rules:
+- `const` by default, `let` only when unavoidable, `var` never
+- `unknown` over `any` — narrow explicitly
+- `as const` objects over enums
+- `??` over `||` for defaults
+- Spread to copy — never mutate the original
+- Annotate at boundaries, infer the rest
+- Named exports over default exports (except Next.js pages)
+- Arrow functions for callbacks, `function` for top-level declarations
+
 ## Code Conventions
 
 - `"use client"` — most components need this since we're an SPA. But keep it at the page/layout level, not on every tiny component.
