@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { DialContextPanel } from "@/components/dial-context-panel"
 import { DialScriptPanel } from "@/components/dial-script-panel"
+import { MissionControl } from "@/components/mission-control"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useTasks } from "@/hooks/use-tasks"
@@ -514,6 +515,9 @@ export default function DialSessionPage() {
       />
 
       <div className="flex-1 p-6 max-w-4xl mx-auto w-full">
+        {/* Mission Control */}
+        <MissionControl attempts={allAttempts} tasks={allTasks} />
+
         {/* Session Progress Bar */}
         <Card className="mb-4">
           <CardContent className="pt-4 pb-3">
