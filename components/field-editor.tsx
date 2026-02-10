@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,14 +12,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,19 +21,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Plus, MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Search, X, GripVertical } from "lucide-react"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import type { FieldType, FieldDefinition } from "@/lib/store"
 
-const fieldTypeLabels: Record<FieldType, string> = {
-  text: "Text",
-  number: "Number",
-  select: "Dropdown",
-  multi_select: "Multi-select",
-  date: "Date",
-  boolean: "Yes/No",
-  url: "URL",
-  email: "Email",
+const fieldTypeConfig: Record<FieldType, { label: string; description: string; icon: string }> = {
+  text: { label: "Text", description: "Single-line text input", icon: "Aa" },
+  number: { label: "Number", description: "Numeric value", icon: "#" },
+  select: { label: "Dropdown", description: "Pick one from a list", icon: "v" },
+  multi_select: { label: "Multi-select", description: "Pick multiple from a list", icon: "[]" },
+  date: { label: "Date", description: "Calendar date picker", icon: "D" },
+  boolean: { label: "Yes / No", description: "Toggle switch", icon: "T" },
+  url: { label: "URL", description: "Web link, opens in new tab", icon: "@" },
+  email: { label: "Email", description: "Email address with mailto", icon: "@" },
 }
 
 function slugify(label: string): string {
@@ -55,6 +49,113 @@ const ENTITY_TYPES = [
   { key: "opportunity", label: "Opportunities" },
 ]
 
+// --- Proper options list manager ---
+function OptionsManager({
+  options,
+  onChange,
+}: {
+  options: string[]
+  onChange: (options: string[]) => void
+}) {
+  const [newOption, setNewOption] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+
+  const addOption = () => {
+    const trimmed = newOption.trim()
+    if (!trimmed || options.includes(trimmed)) return
+    onChange([...options, trimmed])
+    setNewOption("")
+    inputRef.current?.focus()
+  }
+
+  const removeOption = (idx: number) => {
+    onChange(options.filter((_, i) => i !== idx))
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      addOption()
+    }
+  }
+
+  const handleDragStart = (idx: number) => {
+    setDragIdx(idx)
+  }
+
+  const handleDragOver = (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault()
+    if (dragIdx === null || dragIdx === targetIdx) return
+    const reordered = [...options]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(targetIdx, 0, moved)
+    onChange(reordered)
+    setDragIdx(targetIdx)
+  }
+
+  const handleDragEnd = () => {
+    setDragIdx(null)
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label>Options</Label>
+      {options.length > 0 && (
+        <div className="border rounded-lg divide-y">
+          {options.map((opt, i) => (
+            <div
+              key={`${opt}-${i}`}
+              draggable
+              onDragStart={() => handleDragStart(i)}
+              onDragOver={(e) => handleDragOver(e, i)}
+              onDragEnd={handleDragEnd}
+              className={`flex items-center gap-2 px-3 py-2 group hover:bg-muted/50 transition-colors ${
+                dragIdx === i ? "opacity-50" : ""
+              }`}
+            >
+              <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab shrink-0" />
+              <span className="text-sm text-muted-foreground w-5 tabular-nums">{i + 1}</span>
+              <span className="text-sm flex-1">{opt}</span>
+              <button
+                type="button"
+                onClick={() => removeOption(i)}
+                className="h-5 w-5 rounded flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Input
+          ref={inputRef}
+          value={newOption}
+          onChange={(e) => setNewOption(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type an option and press Enter"
+          className="h-9"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-9 shrink-0"
+          onClick={addOption}
+          disabled={!newOption.trim()}
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          Add
+        </Button>
+      </div>
+      {options.length === 0 && (
+        <p className="text-xs text-muted-foreground">Add at least one option for users to select from.</p>
+      )}
+    </div>
+  )
+}
+
 function FieldList({ entityType }: { entityType: string }) {
   const { fields, loading, createField, updateField, deleteField } = useFieldDefinitions(entityType)
   const [search, setSearch] = useState("")
@@ -63,7 +164,7 @@ function FieldList({ entityType }: { entityType: string }) {
   const [formLabel, setFormLabel] = useState("")
   const [formType, setFormType] = useState<FieldType>("text")
   const [formRequired, setFormRequired] = useState(false)
-  const [formOptions, setFormOptions] = useState("")
+  const [formOptions, setFormOptions] = useState<string[]>([])
 
   const entityLabel = ENTITY_TYPES.find((e) => e.key === entityType)?.label ?? entityType
 
@@ -80,7 +181,7 @@ function FieldList({ entityType }: { entityType: string }) {
     setFormLabel("")
     setFormType("text")
     setFormRequired(false)
-    setFormOptions("")
+    setFormOptions([])
     setEditingField(null)
   }
 
@@ -93,16 +194,14 @@ function FieldList({ entityType }: { entityType: string }) {
     setFormLabel(field.fieldLabel)
     setFormType(field.fieldType)
     setFormRequired(field.isRequired)
-    setFormOptions(field.options?.join(", ") ?? "")
+    setFormOptions(field.options ?? [])
     setEditingField(field)
     setIsAddOpen(true)
   }
 
   const handleSave = async () => {
     if (!formLabel.trim()) return
-    const options = showOptions
-      ? formOptions.split(",").map((o) => o.trim()).filter(Boolean)
-      : undefined
+    const options = showOptions ? formOptions : undefined
 
     if (editingField) {
       await updateField(editingField.id, {
@@ -130,6 +229,8 @@ function FieldList({ entityType }: { entityType: string }) {
     if (!confirm(`Delete field "${field.fieldLabel}"? This won't remove existing data.`)) return
     await deleteField(field.id)
   }
+
+  const canSave = formLabel.trim() && (!showOptions || formOptions.length > 0)
 
   if (loading) {
     return <p className="text-sm text-muted-foreground py-4">Loading fields...</p>
@@ -168,13 +269,20 @@ function FieldList({ entityType }: { entityType: string }) {
                 className="grid grid-cols-[2.5rem_1fr_8rem_2.5rem] gap-2 px-4 py-3 items-center group hover:bg-muted/50 transition-colors"
               >
                 <span className="text-sm text-muted-foreground tabular-nums">{i + 1}</span>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium truncate">{field.fieldLabel}</span>
-                  {field.isRequired && (
-                    <Badge variant="secondary" className="text-[10px] shrink-0">Required</Badge>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{field.fieldLabel}</span>
+                    {field.isRequired && (
+                      <Badge variant="secondary" className="text-[10px] shrink-0">Required</Badge>
+                    )}
+                  </div>
+                  {field.options && field.options.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {field.options.join(" / ")}
+                    </p>
                   )}
                 </div>
-                <span className="text-sm text-muted-foreground">{fieldTypeLabels[field.fieldType] ?? field.fieldType}</span>
+                <span className="text-sm text-muted-foreground">{fieldTypeConfig[field.fieldType]?.label ?? field.fieldType}</span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -211,58 +319,76 @@ function FieldList({ entityType }: { entityType: string }) {
       </div>
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingField ? "Edit Field" : `Add ${entityLabel.slice(0, -1)} Field`}</DialogTitle>
+            <DialogDescription>
+              {editingField
+                ? `Editing "${editingField.fieldLabel}" — changes apply immediately.`
+                : `Create a new custom field for ${entityLabel.toLowerCase()}.`}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="space-y-2">
               <Label>Label</Label>
               <Input
                 value={formLabel}
                 onChange={(e) => setFormLabel(e.target.value)}
-                placeholder="e.g. Industry, Fleet Size"
+                placeholder="e.g. Industry, Fleet Size, Revenue"
               />
               {!editingField && formLabel && (
                 <p className="text-xs text-muted-foreground">
-                  Key: <code className="bg-muted px-1 rounded">{slugify(formLabel)}</code>
+                  Internal key: <code className="bg-muted px-1 rounded text-xs">{slugify(formLabel)}</code>
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
               <Label>Type</Label>
-              <Select value={formType} onValueChange={(v) => setFormType(v as FieldType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(fieldTypeLabels) as FieldType[]).map((ft) => (
-                    <SelectItem key={ft} value={ft}>{fieldTypeLabels[ft]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.entries(fieldTypeConfig) as [FieldType, typeof fieldTypeConfig[FieldType]][]).map(([key, config]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setFormType(key)
+                      if (key !== "select" && key !== "multi_select") {
+                        setFormOptions([])
+                      }
+                    }}
+                    className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:bg-muted/50 ${
+                      formType === key
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border"
+                    }`}
+                  >
+                    <span className="text-xs font-mono bg-muted rounded px-1.5 py-0.5 mt-0.5 shrink-0 w-7 text-center">{config.icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{config.label}</p>
+                      <p className="text-xs text-muted-foreground leading-snug">{config.description}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {showOptions && (
-              <div className="space-y-2">
-                <Label>Options (comma-separated)</Label>
-                <Input
-                  value={formOptions}
-                  onChange={(e) => setFormOptions(e.target.value)}
-                  placeholder="Option 1, Option 2, Option 3"
-                />
-              </div>
+              <OptionsManager options={formOptions} onChange={setFormOptions} />
             )}
 
-            <div className="flex items-center gap-2">
-              <Switch checked={formRequired} onCheckedChange={setFormRequired} />
-              <Label>Required field</Label>
+            <div className="pt-1 border-t">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Required field</Label>
+                  <p className="text-xs text-muted-foreground">Must be filled when creating or editing a record</p>
+                </div>
+                <Switch checked={formRequired} onCheckedChange={setFormRequired} />
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={!formLabel.trim()}>
+            <Button onClick={handleSave} disabled={!canSave}>
               {editingField ? "Save Changes" : "Add Field"}
             </Button>
           </DialogFooter>
