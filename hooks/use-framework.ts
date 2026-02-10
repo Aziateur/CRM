@@ -19,7 +19,7 @@ export function useFramework() {
   // Cross-tab sync via storage event
   useEffect(() => {
     const handler = (e: StorageEvent) => {
-      if (e.key === "crm_framework_v3") {
+      if (e.key === "crm_framework_v4") {
         setLocal(getFramework())
       }
     }
@@ -29,8 +29,8 @@ export function useFramework() {
 
   const activePhase: Phase = getActivePhase(framework)
   const activeFocusLever: Lever = getActiveFocusLever(framework)
-  const practiceMarker: Marker | undefined = getMarker(framework, activePhase.practiceMarkerKey)
-  const translationMarker: Marker | undefined = getMarker(framework, activePhase.translationMarkerKey)
+  const actionMarker: Marker | undefined = getMarker(framework, activePhase.actionMarkerKey)
+  const winMarker: Marker | undefined = getMarker(framework, activePhase.winMarkerKey)
 
   const setActivePhase = useCallback((key: string) => {
     const next = { ...framework, activePhaseKey: key }
@@ -61,8 +61,8 @@ export function useFramework() {
     framework,
     activePhase,
     activeFocusLever,
-    practiceMarker,
-    translationMarker,
+    actionMarker,
+    winMarker,
     setActivePhase,
     setTarget,
     saveFramework,

@@ -110,10 +110,10 @@ export default function DialSessionPage() {
   const [sessionAttempts, setSessionAttempts] = useState<Attempt[]>([])
 
   // Framework + signals
-  const { activePhase, activeFocusLever, practiceMarker, translationMarker } = useFramework()
+  const { activePhase, activeFocusLever, actionMarker, winMarker } = useFramework()
   const { toast } = useToast()
-  const [practiceSignal, setPracticeSignal] = useState<boolean | null>(null)
-  const [translationSignal, setTranslationSignal] = useState<boolean | null>(null)
+  const [actionSignal, setActionSignal] = useState<boolean | null>(null)
+  const [winSignal, setWinSignal] = useState<boolean | null>(null)
   const [consecutiveSkips, setConsecutiveSkips] = useState(0)
 
   // Call state
@@ -271,8 +271,8 @@ export default function DialSessionPage() {
     setShowDetail(false)
     setNoteText("")
     // Reset signals
-    setPracticeSignal(null)
-    setTranslationSignal(null)
+    setActionSignal(null)
+    setWinSignal(null)
   }
 
   const skipLead = () => {
@@ -332,16 +332,16 @@ export default function DialSessionPage() {
       }
 
       // Store signals in localStorage — only the phase's markers
-      const signalRecorded = practiceSignal !== null || translationSignal !== null
-      if (activePhase.practiceMarkerKey) {
-        setAttemptSignal(attemptId, activePhase.practiceMarkerKey, practiceSignal ?? false)
+      const signalRecorded = actionSignal !== null || winSignal !== null
+      if (activePhase.actionMarkerKey) {
+        setAttemptSignal(attemptId, activePhase.actionMarkerKey, actionSignal ?? false)
       }
-      if (activePhase.translationMarkerKey && translationSignal !== null) {
-        setAttemptSignal(attemptId, activePhase.translationMarkerKey, translationSignal)
+      if (activePhase.winMarkerKey && winSignal !== null) {
+        setAttemptSignal(attemptId, activePhase.winMarkerKey, winSignal)
       }
 
       // Nudge: track consecutive skips
-      if (!signalRecorded && activePhase.practiceMarkerKey) {
+      if (!signalRecorded && activePhase.actionMarkerKey) {
         const newSkips = consecutiveSkips + 1
         setConsecutiveSkips(newSkips)
         if (newSkips >= 10 && newSkips % 10 === 0) {
@@ -425,14 +425,14 @@ export default function DialSessionPage() {
             setSelectedOutcome(attemptOutcomeOptions[index])
           }
         }
-        // Y/N for practice signal
+        // Y/N for action signal
         if (e.key === "y" || e.key === "Y") {
           e.preventDefault()
-          setPracticeSignal(true)
+          setActionSignal(true)
         }
         if (e.key === "n" || e.key === "N") {
           e.preventDefault()
-          setPracticeSignal(false)
+          setActionSignal(false)
         }
         // Enter to save
         if (e.key === "Enter" && canSave) {
@@ -879,59 +879,59 @@ export default function DialSessionPage() {
 
                   {/* Signals — Y/N per call, dynamic from phase markers */}
                   <div className="space-y-2">
-                    {/* Practice marker (if phase has one) */}
-                    {activePhase.practiceMarkerKey && practiceMarker && (
+                    {/* Action checkbox (if phase has one) */}
+                    {activePhase.actionMarkerKey && actionMarker && (
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Crosshair className="h-3.5 w-3.5 text-primary" />
                           <Label className="text-sm font-medium">
-                            {practiceMarker.label} (Y/N)
+                            {actionMarker.label} (Y/N)
                           </Label>
                         </div>
                         <div className="flex gap-1">
                           <Button
                             type="button"
                             size="sm"
-                            variant={practiceSignal === true ? "default" : "outline"}
-                            className={`h-7 w-10 text-xs ${practiceSignal === true ? "" : "bg-transparent"}`}
-                            onClick={() => setPracticeSignal(true)}
+                            variant={actionSignal === true ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${actionSignal === true ? "" : "bg-transparent"}`}
+                            onClick={() => setActionSignal(true)}
                           >
                             Y
                           </Button>
                           <Button
                             type="button"
                             size="sm"
-                            variant={practiceSignal === false ? "default" : "outline"}
-                            className={`h-7 w-10 text-xs ${practiceSignal === false ? "" : "bg-transparent"}`}
-                            onClick={() => setPracticeSignal(false)}
+                            variant={actionSignal === false ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${actionSignal === false ? "" : "bg-transparent"}`}
+                            onClick={() => setActionSignal(false)}
                           >
                             N
                           </Button>
                         </div>
                       </div>
                     )}
-                    {/* Translation marker (if phase has one) */}
-                    {activePhase.translationMarkerKey && translationMarker && (
+                    {/* Win checkbox (if phase has one) */}
+                    {activePhase.winMarkerKey && winMarker && (
                       <div className="flex items-center justify-between">
                         <Label className="text-sm text-muted-foreground">
-                          {translationMarker.label}?
+                          {winMarker.label}?
                         </Label>
                         <div className="flex gap-1">
                           <Button
                             type="button"
                             size="sm"
-                            variant={translationSignal === true ? "default" : "outline"}
-                            className={`h-7 w-10 text-xs ${translationSignal === true ? "" : "bg-transparent"}`}
-                            onClick={() => setTranslationSignal(true)}
+                            variant={winSignal === true ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${winSignal === true ? "" : "bg-transparent"}`}
+                            onClick={() => setWinSignal(true)}
                           >
                             Y
                           </Button>
                           <Button
                             type="button"
                             size="sm"
-                            variant={translationSignal === false ? "default" : "outline"}
-                            className={`h-7 w-10 text-xs ${translationSignal === false ? "" : "bg-transparent"}`}
-                            onClick={() => setTranslationSignal(false)}
+                            variant={winSignal === false ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${winSignal === false ? "" : "bg-transparent"}`}
+                            onClick={() => setWinSignal(false)}
                           >
                             N
                           </Button>
@@ -939,7 +939,7 @@ export default function DialSessionPage() {
                       </div>
                     )}
                     {/* Show focus hint if no markers at all */}
-                    {!activePhase.practiceMarkerKey && !activePhase.translationMarkerKey && (
+                    {!activePhase.actionMarkerKey && !activePhase.winMarkerKey && (
                       <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
                         <Crosshair className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">
