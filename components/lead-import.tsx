@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -14,7 +14,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -24,17 +26,20 @@ import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import type { Lead, FieldDefinition } from "@/lib/store"
 
+// All real columns on the leads table
 const LEAD_FIELDS = [
   { key: "company", label: "Company", required: true },
   { key: "phone", label: "Phone" },
   { key: "email", label: "Email" },
   { key: "website", label: "Website" },
-  { key: "segment", label: "Segment" },
-  { key: "stage", label: "Stage" },
-  { key: "deal_value", label: "Deal Value" },
-  { key: "lead_source", label: "Lead Source" },
   { key: "address", label: "Address" },
-  { key: "skip", label: "-- Skip this column --" },
+  { key: "segment", label: "Segment" },
+  { key: "lead_source", label: "Lead Source" },
+  { key: "stage", label: "Pipeline Stage" },
+  { key: "deal_value", label: "Deal Value" },
+  { key: "close_probability", label: "Close Probability" },
+  { key: "operational_context", label: "Operational Context" },
+  { key: "opportunity_angle", label: "Opportunity Angle" },
 ]
 
 interface LeadImportProps {
@@ -53,10 +58,28 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState({ imported: 0, skipped: 0 })
 
-  const allFields = [
-    ...LEAD_FIELDS,
-    ...fieldDefinitions.map((f) => ({ key: `custom:${f.fieldKey}`, label: `${f.fieldLabel} (custom)` })),
-  ]
+  // Existing custom fields from field_definitions
+  const existingCustomFields = useMemo(
+    () => fieldDefinitions.map((f) => ({ key: `custom:${f.fieldKey}`, label: f.fieldLabel })),
+    [fieldDefinitions]
+  )
+
+  // CSV headers that aren't matched to built-in or existing custom fields get offered as new custom fields
+  const newCustomFieldOptions = useMemo(() => {
+    if (!csv) return []
+    const builtInKeys = new Set(LEAD_FIELDS.map((f) => f.key))
+    const existingCustomKeys = new Set(fieldDefinitions.map((f) => f.fieldKey))
+    const opts: { key: string; label: string }[] = []
+    const seen = new Set<string>()
+
+    for (const header of csv.headers) {
+      const normalized = header.toLowerCase().trim().replace(/\s+/g, "_")
+      if (builtInKeys.has(normalized) || existingCustomKeys.has(normalized) || seen.has(normalized)) continue
+      seen.add(normalized)
+      opts.push({ key: `new_custom:${normalized}`, label: header })
+    }
+    return opts
+  }, [csv, fieldDefinitions])
 
   const reset = () => {
     setStep("upload")
@@ -81,21 +104,37 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
       const autoMap: Record<number, string> = {}
       parsed.headers.forEach((header, i) => {
         const h = header.toLowerCase().trim()
-        for (const field of allFields) {
-          if (field.key === "skip") continue
+        const hNorm = h.replace(/\s+/g, "_")
+
+        // Check built-in fields
+        for (const field of LEAD_FIELDS) {
           const label = field.label.toLowerCase()
-          const key = field.key.replace("custom:", "").replace(/_/g, " ")
-          if (h === label || h === key || h === field.key) {
+          const key = field.key.replace(/_/g, " ")
+          if (h === label || h === key || h === field.key || hNorm === field.key) {
             autoMap[i] = field.key
-            break
+            return
           }
         }
+
+        // Check existing custom fields
+        for (const fd of fieldDefinitions) {
+          const label = fd.fieldLabel.toLowerCase()
+          const key = fd.fieldKey.toLowerCase()
+          if (h === label || h === key || hNorm === fd.fieldKey) {
+            autoMap[i] = `custom:${fd.fieldKey}`
+            return
+          }
+        }
+
+        // No match → auto-map to "new custom field" for this CSV header
+        const newKey = `new_custom:${hNorm}`
+        autoMap[i] = newKey
       })
       setMapping(autoMap)
       setStep("map")
     }
     reader.readAsText(file)
-  }, [allFields])
+  }, [fieldDefinitions])
 
   const handleImport = async () => {
     if (!csv) return
@@ -112,6 +151,35 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
     const supabase = getSupabase()
     let imported = 0
     let skipped = 0
+
+    // Auto-create field_definitions for any new_custom: fields being used
+    const newCustomKeysUsed = new Set<string>()
+    for (const fieldKey of Object.values(mapping)) {
+      if (fieldKey.startsWith("new_custom:")) {
+        newCustomKeysUsed.add(fieldKey.replace("new_custom:", ""))
+      }
+    }
+
+    if (newCustomKeysUsed.size > 0) {
+      const existingKeys = new Set(fieldDefinitions.map((f) => f.fieldKey))
+      const toCreate = [...newCustomKeysUsed]
+        .filter((k) => !existingKeys.has(k))
+        .map((k, idx) => ({
+          entity_type: "lead",
+          field_key: k,
+          field_label: k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          field_type: "text",
+          position: fieldDefinitions.length + idx,
+        }))
+
+      if (toCreate.length > 0) {
+        try {
+          await supabase.from("field_definitions").insert(toCreate)
+        } catch {
+          // Non-critical — fields will still import into custom_fields JSONB
+        }
+      }
+    }
 
     // Build rows
     const insertRows: Record<string, unknown>[] = []
@@ -132,9 +200,11 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
 
         if (fieldKey.startsWith("custom:")) {
           customFields[fieldKey.replace("custom:", "")] = val
-        } else if (fieldKey === "deal_value") {
+        } else if (fieldKey.startsWith("new_custom:")) {
+          customFields[fieldKey.replace("new_custom:", "")] = val
+        } else if (fieldKey === "deal_value" || fieldKey === "close_probability") {
           const num = parseFloat(val)
-          if (!isNaN(num)) record.deal_value = num
+          if (!isNaN(num)) record[fieldKey] = num
         } else {
           record[fieldKey] = val
         }
@@ -163,7 +233,6 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
         skipped += chunk.length
       } else if (data) {
         imported += data.length
-        // Minimal lead mapping for the callback
         for (const row of data) {
           importedLeads.push({
             id: row.id,
@@ -190,6 +259,10 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
 
   const companyMapped = Object.values(mapping).includes("company")
 
+  // Count how many columns are mapped (not skipped)
+  const mappedCount = Object.values(mapping).filter((v) => v !== "skip").length
+  const totalCols = csv?.headers.length ?? 0
+
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => { reset(); setOpen(true) }}>
@@ -208,7 +281,7 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
             </DialogTitle>
             <DialogDescription>
               {step === "upload" && "Upload a CSV file with your leads data."}
-              {step === "map" && `${csv?.rowCount ?? 0} rows found. Map CSV columns to lead fields.`}
+              {step === "map" && `${csv?.rowCount ?? 0} rows found. ${mappedCount}/${totalCols} columns mapped.`}
               {step === "preview" && "Writing leads to database..."}
               {step === "done" && `${result.imported} leads imported, ${result.skipped} skipped.`}
             </DialogDescription>
@@ -245,6 +318,7 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                 {csv.headers.map((header, i) => {
                   const mapped = mapping[i]
                   const isMapped = mapped && mapped !== "skip"
+                  const isNewCustom = mapped?.startsWith("new_custom:")
                   return (
                     <div key={i} className="px-4 py-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
@@ -255,8 +329,14 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                           </p>
                         </div>
                         {isMapped && (
-                          <Badge variant="secondary" className="shrink-0 text-xs">
-                            {allFields.find((f) => f.key === mapped)?.label ?? mapped}
+                          <Badge
+                            variant={isNewCustom ? "outline" : "secondary"}
+                            className="shrink-0 text-xs"
+                          >
+                            {isNewCustom ? `+ ${header} (new field)` :
+                              (LEAD_FIELDS.find((f) => f.key === mapped)?.label ??
+                               existingCustomFields.find((f) => f.key === mapped)?.label ??
+                               mapped)}
                           </Badge>
                         )}
                       </div>
@@ -268,12 +348,35 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                           <SelectValue placeholder="-- Skip this column --" />
                         </SelectTrigger>
                         <SelectContent>
-                          {allFields.map((f) => (
-                            <SelectItem key={f.key} value={f.key}>
-                              {f.label}
-                              {f.key === "company" ? " *" : ""}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="skip">-- Skip this column --</SelectItem>
+                          <SelectGroup>
+                            <SelectLabel>Lead Fields</SelectLabel>
+                            {LEAD_FIELDS.map((f) => (
+                              <SelectItem key={f.key} value={f.key}>
+                                {f.label}{f.required ? " *" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                          {existingCustomFields.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>Custom Fields</SelectLabel>
+                              {existingCustomFields.map((f) => (
+                                <SelectItem key={f.key} value={f.key}>
+                                  {f.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
+                          {newCustomFieldOptions.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>Create New Custom Field</SelectLabel>
+                              {newCustomFieldOptions.map((f) => (
+                                <SelectItem key={f.key} value={f.key}>
+                                  + {f.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
