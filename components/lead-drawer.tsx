@@ -71,6 +71,8 @@ import {
 } from "@/lib/store"
 import { getOutcomeColor } from "@/components/leads-table"
 import { CallsPanel } from "@/components/CallsPanel"
+import { useLeadActivities } from "@/hooks/use-lead-activities"
+import { MessageSquare, Send } from "lucide-react"
 
 function timeSince(timestamp: string): string {
   const now = new Date()
@@ -123,6 +125,14 @@ export function LeadDrawer({
   const [editedLead, setEditedLead] = useState<Lead | null>(null)
   const [isAddContactOpen, setIsAddContactOpen] = useState(false)
   const [newContact, setNewContact] = useState({ name: "", phone: "", role: "Other" as ContactRole })
+  const { activities, addNote } = useLeadActivities(lead?.id ?? null)
+  const [noteText, setNoteText] = useState("")
+
+  const handleAddNote = async () => {
+    if (!noteText.trim()) return
+    await addNote(noteText)
+    setNoteText("")
+  }
 
   // Sync editedLead when lead changes
   const currentLead = editedLead && editedLead.id === lead?.id ? editedLead : lead
@@ -702,6 +712,49 @@ export function LeadDrawer({
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground text-center py-2">No contacts yet</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* NOTES & ACTIVITY */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                    <MessageSquare className="h-4 w-4" />
+                    Notes & Activity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex gap-2">
+                    <Input
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddNote() } }}
+                      placeholder="Add a note..."
+                      className="flex-1"
+                    />
+                    <Button size="icon" variant="ghost" onClick={handleAddNote} disabled={!noteText.trim()}>
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {activities.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      {activities.map((activity) => (
+                        <div key={activity.id} className="flex gap-3 text-sm">
+                          <div className="shrink-0 mt-1">
+                            {activity.activityType === "note" && <MessageSquare className="h-3.5 w-3.5 text-blue-500" />}
+                            {activity.activityType === "stage_change" && <ChevronRight className="h-3.5 w-3.5 text-amber-500" />}
+                            {activity.activityType === "created" && <Plus className="h-3.5 w-3.5 text-green-500" />}
+                            {activity.activityType === "imported" && <Plus className="h-3.5 w-3.5 text-purple-500" />}
+                            {activity.activityType === "field_edit" && <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm">{activity.description}</p>
+                            <p className="text-xs text-muted-foreground">{timeSince(activity.createdAt)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </CardContent>
               </Card>

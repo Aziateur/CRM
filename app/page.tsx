@@ -31,7 +31,20 @@ import {
   type Lead,
   type Attempt,
 } from "@/lib/store"
-import { LayoutGrid, Table2 } from "lucide-react"
+import { LayoutGrid, Table2, Download, Bookmark, X, Plus } from "lucide-react"
+import { exportLeadsCSV, exportAttemptsCSV } from "@/lib/csv"
+import { LeadImport } from "@/components/lead-import"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { useViewPresets, type ViewFilters } from "@/hooks/use-view-presets"
+import { DashboardWidgets } from "@/components/dashboard-widgets"
+import { BulkActionsBar } from "@/components/bulk-actions-bar"
 
 type ViewMode = "table" | "kanban"
 
@@ -42,15 +55,39 @@ export default function LeadsPage() {
   const { stages } = usePipelineStages()
   const { tasks, completeTask } = useTasks()
   const { fields: fieldDefinitions } = useFieldDefinitions("lead")
+  const { presets, savePreset, deletePreset } = useViewPresets("lead")
 
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>("table")
+  const [savingView, setSavingView] = useState(false)
+  const [newViewName, setNewViewName] = useState("")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Filters
   const [segmentFilter, setSegmentFilter] = useState<string>("all")
   const [outcomeFilter, setOutcomeFilter] = useState<string>("all")
   const [stageFilter, setStageFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
+
+  const applyPreset = (filters: ViewFilters, vm: string) => {
+    setSegmentFilter(filters.segment ?? "all")
+    setOutcomeFilter(filters.outcome ?? "all")
+    setStageFilter(filters.stage ?? "all")
+    setSearchQuery(filters.search ?? "")
+    if (vm === "kanban" || vm === "table") setViewMode(vm)
+  }
+
+  const handleSaveView = async () => {
+    if (!newViewName.trim()) return
+    const filters: ViewFilters = {}
+    if (segmentFilter !== "all") filters.segment = segmentFilter
+    if (outcomeFilter !== "all") filters.outcome = outcomeFilter
+    if (stageFilter !== "all") filters.stage = stageFilter
+    if (searchQuery) filters.search = searchQuery
+    await savePreset(newViewName.trim(), filters, viewMode)
+    setNewViewName("")
+    setSavingView(false)
+  }
 
   // Drawer & modal state
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -132,6 +169,13 @@ export default function LeadsPage() {
       />
 
       <div className="flex-1 p-6">
+        {/* Dashboard Widgets */}
+        {!loading && (leads.length > 0 || attempts.length > 0) && (
+          <div className="mb-6">
+            <DashboardWidgets leads={leads} attempts={attempts} stages={stages} />
+          </div>
+        )}
+
         {/* Tasks Dashboard */}
         {tasks.length > 0 && (
           <div className="mb-6">
@@ -144,8 +188,50 @@ export default function LeadsPage() {
           </div>
         )}
 
-        {/* Filters + View Toggle */}
+        {/* Saved Views + Filters + View Toggle */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1">
+                <Bookmark className="h-4 w-4" />
+                Views
+                {presets.length > 0 && <span className="text-xs bg-muted rounded px-1">{presets.length}</span>}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {presets.map((p) => (
+                <DropdownMenuItem key={p.id} className="flex items-center justify-between">
+                  <span className="flex-1 truncate cursor-pointer" onClick={() => applyPreset(p.filters, p.viewMode)}>{p.name}</span>
+                  <button
+                    className="ml-2 h-5 w-5 flex items-center justify-center text-muted-foreground hover:text-red-500 rounded"
+                    onClick={(e) => { e.stopPropagation(); deletePreset(p.id) }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </DropdownMenuItem>
+              ))}
+              {presets.length > 0 && <DropdownMenuSeparator />}
+              {savingView ? (
+                <div className="px-2 py-1.5 flex gap-1">
+                  <Input
+                    value={newViewName}
+                    onChange={(e) => setNewViewName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSaveView(); if (e.key === "Escape") setSavingView(false) }}
+                    placeholder="View name..."
+                    className="h-7 text-sm"
+                    autoFocus
+                  />
+                  <Button size="sm" className="h-7 px-2" onClick={handleSaveView} disabled={!newViewName.trim()}>Save</Button>
+                </div>
+              ) : (
+                <DropdownMenuItem onClick={() => setSavingView(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Save current view
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Select value={segmentFilter} onValueChange={setSegmentFilter}>
             <SelectTrigger className="w-36">
               <SelectValue placeholder="Segment" />
@@ -187,25 +273,57 @@ export default function LeadsPage() {
             </SelectContent>
           </Select>
 
-          <div className="ml-auto flex items-center gap-1 border rounded-lg p-0.5">
-            <Button
-              size="sm"
-              variant={viewMode === "table" ? "default" : "ghost"}
-              className="h-7 px-2"
-              onClick={() => setViewMode("table")}
-            >
-              <Table2 className="h-4 w-4" />
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === "kanban" ? "default" : "ghost"}
-              className="h-7 px-2"
-              onClick={() => setViewMode("kanban")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <LeadImport
+              fieldDefinitions={fieldDefinitions}
+              onImported={(imported) => setLeads((prev) => [...imported, ...prev])}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-1" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => exportLeadsCSV(filteredLeads, attempts, fieldDefinitions)}>
+                  Export Leads ({filteredLeads.length})
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportAttemptsCSV(attempts, leads)}>
+                  Export Call History ({attempts.length})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="flex items-center gap-1 border rounded-lg p-0.5">
+              <Button
+                size="sm"
+                variant={viewMode === "table" ? "default" : "ghost"}
+                className="h-7 px-2"
+                onClick={() => setViewMode("table")}
+              >
+                <Table2 className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "kanban" ? "default" : "ghost"}
+                className="h-7 px-2"
+                onClick={() => setViewMode("kanban")}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Bulk Actions */}
+        <BulkActionsBar
+          selectedIds={selectedIds}
+          leads={leads}
+          attempts={attempts}
+          fieldDefinitions={fieldDefinitions}
+          onClearSelection={() => setSelectedIds(new Set())}
+          onLeadsUpdated={() => { setSelectedIds(new Set()); window.location.reload() }}
+        />
 
         {/* Main View */}
         {viewMode === "table" ? (
@@ -216,6 +334,8 @@ export default function LeadsPage() {
             attempts={attempts}
             fieldDefinitions={fieldDefinitions}
             onSelectLead={openLeadDrawer}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
           />
         ) : (
           <KanbanBoard

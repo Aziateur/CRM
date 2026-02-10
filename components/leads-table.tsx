@@ -1,6 +1,7 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Phone } from "lucide-react"
 import {
   Table,
@@ -55,6 +56,8 @@ interface LeadsTableProps {
   attempts?: Attempt[]
   fieldDefinitions?: FieldDefinition[]
   onSelectLead: (lead: LeadWithDerived) => void
+  selectedIds?: Set<string>
+  onSelectionChange?: (ids: Set<string>) => void
 }
 
 function getStageColor(stageName: string, stages: PipelineStage[]): string {
@@ -79,9 +82,28 @@ function TableSkeleton() {
   )
 }
 
-export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDefinitions = [], onSelectLead }: LeadsTableProps) {
+export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDefinitions = [], onSelectLead, selectedIds, onSelectionChange }: LeadsTableProps) {
   // Show up to 3 custom field columns
   const visibleFields = fieldDefinitions.slice(0, 3)
+  const hasSelection = selectedIds !== undefined && onSelectionChange !== undefined
+  const allSelected = hasSelection && leads.length > 0 && leads.every((l) => selectedIds!.has(l.id))
+
+  const toggleAll = () => {
+    if (!onSelectionChange) return
+    if (allSelected) {
+      onSelectionChange(new Set())
+    } else {
+      onSelectionChange(new Set(leads.map((l) => l.id)))
+    }
+  }
+
+  const toggleOne = (id: string) => {
+    if (!onSelectionChange || !selectedIds) return
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onSelectionChange(next)
+  }
 
   if (loading) {
     return (
@@ -96,6 +118,15 @@ export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDe
       <Table>
         <TableHeader>
           <TableRow>
+            {hasSelection && (
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all"
+                />
+              </TableHead>
+            )}
             <TableHead className="w-[200px]">Company</TableHead>
             <TableHead className="w-[140px]">Phone</TableHead>
             <TableHead>Stage</TableHead>
@@ -118,6 +149,15 @@ export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDe
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={() => onSelectLead(lead)}
               >
+                {hasSelection && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds!.has(lead.id)}
+                      onCheckedChange={() => toggleOne(lead.id)}
+                      aria-label={`Select ${lead.company}`}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="font-medium">{lead.company}</TableCell>
                 <TableCell>
                   {lead.phone ? (
