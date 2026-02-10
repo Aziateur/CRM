@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { FieldEditor } from "@/components/field-editor"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { PipelineEditor } from "@/components/pipeline-editor"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, XCircle, RefreshCw } from "lucide-react"
 
@@ -12,13 +12,12 @@ interface DiagCheck {
   status: "pending" | "success" | "error"
   details?: Record<string, string>
   message?: string
-  mode?: string
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "success") return <CheckCircle2 className="h-5 w-5 text-green-500" />
-  if (status === "error") return <XCircle className="h-5 w-5 text-red-500" />
-  return <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+  if (status === "success") return <CheckCircle2 className="h-4 w-4 text-green-500" />
+  if (status === "error") return <XCircle className="h-4 w-4 text-red-500" />
+  return <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
 }
 
 function SystemDiagnostics() {
@@ -80,17 +79,15 @@ function SystemDiagnostics() {
   }, [])
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">System Diagnostics</CardTitle>
-          <Button onClick={runDiagnostics} variant="outline" size="sm">
-            <RefreshCw className="mr-1 h-3 w-3" /> Re-run
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between p-3 rounded-lg border">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">System Diagnostics</h3>
+        <Button onClick={runDiagnostics} variant="ghost" size="sm" className="h-8">
+          <RefreshCw className="mr-1 h-3 w-3" /> Re-run
+        </Button>
+      </div>
+      <div className="border rounded-lg divide-y">
+        <div className="flex items-center justify-between px-4 py-3">
           <div>
             <p className="text-sm font-medium">Environment Variables</p>
             <p className="text-xs text-muted-foreground">
@@ -99,16 +96,14 @@ function SystemDiagnostics() {
           </div>
           <StatusIcon status={checks.env.status} />
         </div>
-
-        <div className="flex items-center justify-between p-3 rounded-lg border">
+        <div className="flex items-center justify-between px-4 py-3">
           <div>
             <p className="text-sm font-medium">Supabase Connection</p>
             <p className="text-xs text-muted-foreground">{checks.supabase.message || "Checking..."}</p>
           </div>
           <StatusIcon status={checks.supabase.status} />
         </div>
-
-        <div className="flex items-center justify-between p-3 rounded-lg border">
+        <div className="flex items-center justify-between px-4 py-3">
           <div>
             <p className="text-sm font-medium">Browser</p>
             <p className="text-xs text-muted-foreground">
@@ -117,8 +112,8 @@ function SystemDiagnostics() {
           </div>
           <StatusIcon status={checks.browser.status} />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -128,12 +123,13 @@ export default function SettingsPage() {
       <Topbar title="Settings" />
 
       <div className="flex-1 p-6 max-w-3xl">
-        <div className="mb-6">
+        <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Custom fields, diagnostics, and configuration</p>
+          <p className="text-muted-foreground">Pipeline, custom fields, and system configuration</p>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-10">
+          <PipelineEditor />
           <FieldEditor />
           <SystemDiagnostics />
         </div>

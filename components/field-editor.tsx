@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -21,9 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Trash2, ChevronUp, ChevronDown, Settings2 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Plus, MoreHorizontal, Pencil, Trash2, Search } from "lucide-react"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
-import type { FieldType } from "@/lib/store"
+import type { FieldType, FieldDefinition } from "@/lib/store"
 
 const fieldTypeLabels: Record<FieldType, string> = {
   text: "Text",
@@ -43,159 +49,190 @@ function slugify(label: string): string {
     .replace(/^_|_$/g, "")
 }
 
-export function FieldEditor() {
-  const { fields, loading, createField, deleteField, moveField } = useFieldDefinitions("lead")
+const ENTITY_TYPES = [
+  { key: "lead", label: "Leads" },
+  { key: "contact", label: "Contacts" },
+  { key: "opportunity", label: "Opportunities" },
+]
+
+function FieldList({ entityType }: { entityType: string }) {
+  const { fields, loading, createField, updateField, deleteField } = useFieldDefinitions(entityType)
+  const [search, setSearch] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
-  const [newLabel, setNewLabel] = useState("")
-  const [newType, setNewType] = useState<FieldType>("text")
-  const [newRequired, setNewRequired] = useState(false)
-  const [newOptions, setNewOptions] = useState("")
+  const [editingField, setEditingField] = useState<FieldDefinition | null>(null)
+  const [formLabel, setFormLabel] = useState("")
+  const [formType, setFormType] = useState<FieldType>("text")
+  const [formRequired, setFormRequired] = useState(false)
+  const [formOptions, setFormOptions] = useState("")
 
-  const showOptions = newType === "select" || newType === "multi_select"
+  const entityLabel = ENTITY_TYPES.find((e) => e.key === entityType)?.label ?? entityType
 
-  const handleAdd = async () => {
-    if (!newLabel.trim()) return
-    const key = slugify(newLabel)
+  const filtered = search
+    ? fields.filter((f) =>
+        f.fieldLabel.toLowerCase().includes(search.toLowerCase()) ||
+        f.fieldKey.toLowerCase().includes(search.toLowerCase())
+      )
+    : fields
+
+  const showOptions = formType === "select" || formType === "multi_select"
+
+  const resetForm = () => {
+    setFormLabel("")
+    setFormType("text")
+    setFormRequired(false)
+    setFormOptions("")
+    setEditingField(null)
+  }
+
+  const openAdd = () => {
+    resetForm()
+    setIsAddOpen(true)
+  }
+
+  const openEdit = (field: FieldDefinition) => {
+    setFormLabel(field.fieldLabel)
+    setFormType(field.fieldType)
+    setFormRequired(field.isRequired)
+    setFormOptions(field.options?.join(", ") ?? "")
+    setEditingField(field)
+    setIsAddOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!formLabel.trim()) return
     const options = showOptions
-      ? newOptions.split(",").map((o) => o.trim()).filter(Boolean)
+      ? formOptions.split(",").map((o) => o.trim()).filter(Boolean)
       : undefined
 
-    await createField({
-      fieldKey: key,
-      fieldLabel: newLabel.trim(),
-      fieldType: newType,
-      options,
-      isRequired: newRequired,
-    })
+    if (editingField) {
+      await updateField(editingField.id, {
+        fieldLabel: formLabel.trim(),
+        fieldType: formType,
+        isRequired: formRequired,
+        options,
+      })
+    } else {
+      const key = slugify(formLabel)
+      await createField({
+        fieldKey: key,
+        fieldLabel: formLabel.trim(),
+        fieldType: formType,
+        options,
+        isRequired: formRequired,
+      })
+    }
 
-    setNewLabel("")
-    setNewType("text")
-    setNewRequired(false)
-    setNewOptions("")
+    resetForm()
     setIsAddOpen(false)
   }
 
-  const handleDelete = async (id: string, label: string) => {
-    if (!confirm(`Delete field "${label}"? This won't remove existing data.`)) return
-    await deleteField(id)
+  const handleDelete = async (field: FieldDefinition) => {
+    if (!confirm(`Delete field "${field.fieldLabel}"? This won't remove existing data.`)) return
+    await deleteField(field.id)
   }
 
   if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Settings2 className="h-4 w-4" />
-            Custom Fields
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </CardContent>
-      </Card>
-    )
+    return <p className="text-sm text-muted-foreground py-4">Loading fields...</p>
   }
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Settings2 className="h-4 w-4" />
-              Custom Fields
-              <Badge variant="secondary" className="text-xs">{fields.length}</Badge>
-            </CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setIsAddOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add Field
-            </Button>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Filter fields..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-9"
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          {fields.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No custom fields defined. Add one to extend your lead data.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {fields.map((field, i) => (
-                <div
-                  key={field.id}
-                  className="flex items-center justify-between p-3 rounded-lg border"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col gap-0.5">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5"
-                        disabled={i === 0}
-                        onClick={() => moveField(field.id, "up")}
-                      >
-                        <ChevronUp className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5"
-                        disabled={i === fields.length - 1}
-                        onClick={() => moveField(field.id, "down")}
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{field.fieldLabel}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant="outline" className="text-xs">
-                          {fieldTypeLabels[field.fieldType] ?? field.fieldType}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">{field.fieldKey}</span>
-                        {field.isRequired && (
-                          <Badge variant="secondary" className="text-xs">Required</Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="text-muted-foreground hover:text-red-600"
-                    onClick={() => handleDelete(field.id, field.fieldLabel)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+          <Button size="sm" className="h-9" onClick={openAdd}>
+            <Plus className="h-4 w-4 mr-1" />
+            New {entityLabel.slice(0, -1)} Field
+          </Button>
+        </div>
+
+        <div className="border rounded-lg">
+          <div className="grid grid-cols-[2.5rem_1fr_8rem_2.5rem] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <span>#</span>
+            <span>Name</span>
+            <span>Type</span>
+            <span></span>
+          </div>
+          <div className="divide-y">
+            {filtered.map((field, i) => (
+              <div
+                key={field.id}
+                className="grid grid-cols-[2.5rem_1fr_8rem_2.5rem] gap-2 px-4 py-3 items-center group hover:bg-muted/50 transition-colors"
+              >
+                <span className="text-sm text-muted-foreground tabular-nums">{i + 1}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium truncate">{field.fieldLabel}</span>
+                  {field.isRequired && (
+                    <Badge variant="secondary" className="text-[10px] shrink-0">Required</Badge>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <span className="text-sm text-muted-foreground">{fieldTypeLabels[field.fieldType] ?? field.fieldType}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openEdit(field)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleDelete(field)}
+                      className="text-red-600 focus:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                {search ? "No fields match your filter." : `No custom fields defined for ${entityLabel.toLowerCase()}.`}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Custom Field</DialogTitle>
+            <DialogTitle>{editingField ? "Edit Field" : `Add ${entityLabel.slice(0, -1)} Field`}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Label *</Label>
+              <Label>Label</Label>
               <Input
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
                 placeholder="e.g. Industry, Fleet Size"
               />
-              {newLabel && (
+              {!editingField && formLabel && (
                 <p className="text-xs text-muted-foreground">
-                  Key: <code className="bg-muted px-1 rounded">{slugify(newLabel)}</code>
+                  Key: <code className="bg-muted px-1 rounded">{slugify(formLabel)}</code>
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
               <Label>Type</Label>
-              <Select value={newType} onValueChange={(v) => setNewType(v as FieldType)}>
+              <Select value={formType} onValueChange={(v) => setFormType(v as FieldType)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -211,24 +248,69 @@ export function FieldEditor() {
               <div className="space-y-2">
                 <Label>Options (comma-separated)</Label>
                 <Input
-                  value={newOptions}
-                  onChange={(e) => setNewOptions(e.target.value)}
+                  value={formOptions}
+                  onChange={(e) => setFormOptions(e.target.value)}
                   placeholder="Option 1, Option 2, Option 3"
                 />
               </div>
             )}
 
             <div className="flex items-center gap-2">
-              <Switch checked={newRequired} onCheckedChange={setNewRequired} />
+              <Switch checked={formRequired} onCheckedChange={setFormRequired} />
               <Label>Required field</Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={!newLabel.trim()}>Add Field</Button>
+            <Button onClick={handleSave} disabled={!formLabel.trim()}>
+              {editingField ? "Save Changes" : "Add Field"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+export function FieldEditor() {
+  const leadFields = useFieldDefinitions("lead")
+  const contactFields = useFieldDefinitions("contact")
+  const opportunityFields = useFieldDefinitions("opportunity")
+
+  return (
+    <Tabs defaultValue="lead">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Custom Fields</h3>
+      </div>
+      <TabsList>
+        <TabsTrigger value="lead">
+          Leads
+          {!leadFields.loading && (
+            <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{leadFields.fields.length}</Badge>
+          )}
+        </TabsTrigger>
+        <TabsTrigger value="contact">
+          Contacts
+          {!contactFields.loading && (
+            <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{contactFields.fields.length}</Badge>
+          )}
+        </TabsTrigger>
+        <TabsTrigger value="opportunity">
+          Opportunities
+          {!opportunityFields.loading && (
+            <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{opportunityFields.fields.length}</Badge>
+          )}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="lead">
+        <FieldList entityType="lead" />
+      </TabsContent>
+      <TabsContent value="contact">
+        <FieldList entityType="contact" />
+      </TabsContent>
+      <TabsContent value="opportunity">
+        <FieldList entityType="opportunity" />
+      </TabsContent>
+    </Tabs>
   )
 }
