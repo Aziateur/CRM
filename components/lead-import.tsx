@@ -242,33 +242,43 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
           {step === "map" && csv && (
             <div className="space-y-4">
               <div className="border rounded-lg divide-y max-h-[50vh] overflow-y-auto">
-                {csv.headers.map((header, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{header}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        e.g. {csv.rows[0]?.[i] ?? "—"}
-                      </p>
+                {csv.headers.map((header, i) => {
+                  const mapped = mapping[i]
+                  const isMapped = mapped && mapped !== "skip"
+                  return (
+                    <div key={i} className="px-4 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{header}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            e.g. {csv.rows[0]?.[i] ?? "—"}
+                          </p>
+                        </div>
+                        {isMapped && (
+                          <Badge variant="secondary" className="shrink-0 text-xs">
+                            {allFields.find((f) => f.key === mapped)?.label ?? mapped}
+                          </Badge>
+                        )}
+                      </div>
+                      <Select
+                        value={mapping[i] ?? "skip"}
+                        onValueChange={(v) => setMapping((prev) => ({ ...prev, [i]: v }))}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="-- Skip this column --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allFields.map((f) => (
+                            <SelectItem key={f.key} value={f.key}>
+                              {f.label}
+                              {f.key === "company" ? " *" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <span className="text-muted-foreground text-sm shrink-0">&rarr;</span>
-                    <Select
-                      value={mapping[i] ?? "skip"}
-                      onValueChange={(v) => setMapping((prev) => ({ ...prev, [i]: v }))}
-                    >
-                      <SelectTrigger className="w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allFields.map((f) => (
-                          <SelectItem key={f.key} value={f.key}>
-                            {f.label}
-                            {f.key === "company" ? " *" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               {!companyMapped && (
                 <p className="text-sm text-amber-600 flex items-center gap-1">
