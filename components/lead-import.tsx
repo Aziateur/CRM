@@ -273,10 +273,6 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
     if (!csv) return
 
     const companyColIdx = Object.entries(mapping).find(([, v]) => v === "company")?.[0]
-    if (companyColIdx === undefined) {
-      toast({ variant: "destructive", title: "Company column required", description: "Map at least one column to Company before importing." })
-      return
-    }
 
     // Validate that all "new custom" selections have names
     for (const [colStr, val] of Object.entries(mapping)) {
@@ -346,11 +342,23 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
 
     // Build rows
     const insertRows: Record<string, unknown>[] = []
-    for (const row of csv.rows) {
-      const company = row[Number(companyColIdx)]?.trim()
+    for (let rowIdx = 0; rowIdx < csv.rows.length; rowIdx++) {
+      const row = csv.rows[rowIdx]
+
+      // Get company name: from mapped column, or first non-empty text value, or fallback
+      let company = companyColIdx !== undefined ? row[Number(companyColIdx)]?.trim() : ""
       if (!company) {
-        skipped++
-        continue
+        // Try to use the first non-empty mapped value as company name
+        for (const [colStr, resolved] of Object.entries(resolvedMapping)) {
+          const val = row[Number(colStr)]?.trim()
+          if (val && !resolved.isCustom) {
+            company = val
+            break
+          }
+        }
+      }
+      if (!company) {
+        company = `Imported Lead #${rowIdx + 1}`
       }
 
       const record: Record<string, unknown> = { company }
@@ -419,6 +427,7 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
   }
 
   const companyMapped = Object.values(mapping).includes("company")
+  const hasAnyMapping = Object.values(mapping).some((v) => v !== "skip")
 
   const mappedCount = Object.values(mapping).filter((v) => v !== "skip").length
   const totalCols = csv?.headers.length ?? 0
@@ -488,10 +497,16 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                   />
                 ))}
               </div>
-              {!companyMapped && (
+              {!companyMapped && hasAnyMapping && (
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" />
+                  Tip: Map a column to Company for best results. Otherwise, a fallback name will be used.
+                </p>
+              )}
+              {!hasAnyMapping && (
                 <p className="text-sm text-amber-600 flex items-center gap-1">
                   <AlertCircle className="h-4 w-4" />
-                  Map at least the Company column to import.
+                  Map at least one column to import.
                 </p>
               )}
             </div>
@@ -523,7 +538,7 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
             {step === "map" && (
               <>
                 <Button variant="outline" onClick={() => setStep("upload")}>Back</Button>
-                <Button onClick={handleImport} disabled={!companyMapped}>
+                <Button onClick={handleImport} disabled={!hasAnyMapping}>
                   Import {csv?.rowCount ?? 0} Leads
                 </Button>
               </>
