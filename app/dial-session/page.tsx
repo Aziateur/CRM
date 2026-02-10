@@ -43,6 +43,7 @@ import {
   Clock,
   Zap,
   RotateCcw,
+  Crosshair,
 } from "lucide-react"
 import {
   getDefaultNextAction,
@@ -57,6 +58,9 @@ import {
   type WhyReason,
   type RepMistake,
 } from "@/lib/store"
+import { useFramework } from "@/hooks/use-framework"
+import { setAttemptSignal, hasSignal } from "@/lib/signals"
+import { useToast } from "@/hooks/use-toast"
 
 // Outcome colors for pills
 const outcomeStyles: Record<AttemptOutcome, string> = {
@@ -104,6 +108,13 @@ export default function DialSessionPage() {
   const [selectedExperiment, setSelectedExperiment] = useState<string>("none")
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0)
   const [sessionAttempts, setSessionAttempts] = useState<Attempt[]>([])
+
+  // Framework + signals
+  const { activePhase, activeFocusLever } = useFramework()
+  const { toast } = useToast()
+  const [focusPracticed, setFocusPracticed] = useState<boolean | null>(null)
+  const [truthGained, setTruthGained] = useState<boolean | null>(null)
+  const [consecutiveSkips, setConsecutiveSkips] = useState(0)
 
   // Call state
   const [isOnCall, setIsOnCall] = useState(false)
@@ -259,6 +270,9 @@ export default function DialSessionPage() {
     setCustomFollowUpDays("")
     setShowDetail(false)
     setNoteText("")
+    // Reset signals
+    setFocusPracticed(null)
+    setTruthGained(null)
   }
 
   const skipLead = () => {
@@ -270,7 +284,11 @@ export default function DialSessionPage() {
   const logAttempt = async () => {
     if (!currentLead || !selectedOutcome || !canSave) return
 
+    // Client-generated UUID — used for both Supabase insert and localStorage signals
+    const attemptId = crypto.randomUUID()
+
     const attemptData = {
+      id: attemptId,
       lead_id: currentLead.id,
       timestamp: new Date().toISOString(),
       outcome: selectedOutcome,
@@ -311,6 +329,40 @@ export default function DialSessionPage() {
         sessionId: data.session_id,
         durationSec: data.duration_sec,
         createdAt: data.created_at,
+      }
+
+      // Store signals in localStorage
+      const signalRecorded = focusPracticed !== null || truthGained !== null
+      if (focusPracticed !== null) {
+        setAttemptSignal(attemptId, "focus_practiced", focusPracticed)
+      } else {
+        // Default: No if skipped
+        setAttemptSignal(attemptId, "focus_practiced", false)
+      }
+      if (truthGained !== null) {
+        setAttemptSignal(attemptId, "new_truth_gained", truthGained)
+      }
+      // Meetings are counted from outcomes, not signals — but store for completeness
+      if (selectedOutcome === "Meeting set") {
+        setAttemptSignal(attemptId, "meetings_set", true)
+      }
+      // ICP validated signal — mark true if DM was reached (proxy)
+      if (isDmReached(selectedOutcome)) {
+        setAttemptSignal(attemptId, "icp_validated", true)
+      }
+
+      // Nudge: track consecutive skips
+      if (!signalRecorded) {
+        const newSkips = consecutiveSkips + 1
+        setConsecutiveSkips(newSkips)
+        if (newSkips >= 10 && newSkips % 10 === 0) {
+          toast({
+            title: "No focus marks in 10 calls",
+            description: "Press Y/N in the logger to track your focus practice.",
+          })
+        }
+      } else {
+        setConsecutiveSkips(0)
       }
 
       setSessionAttempts((prev) => [attempt, ...prev])
@@ -383,6 +435,15 @@ export default function DialSessionPage() {
           if (index < attemptOutcomeOptions.length) {
             setSelectedOutcome(attemptOutcomeOptions[index])
           }
+        }
+        // Y/N for focus practiced signal
+        if (e.key === "y" || e.key === "Y") {
+          e.preventDefault()
+          setFocusPracticed(true)
+        }
+        if (e.key === "n" || e.key === "N") {
+          e.preventDefault()
+          setFocusPracticed(false)
         }
         // Enter to save
         if (e.key === "Enter" && canSave) {
@@ -632,6 +693,19 @@ export default function DialSessionPage() {
                   </div>
                 )}
 
+                {/* Focus hint (visible during call) */}
+                {isOnCall && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 rounded-lg border border-primary/20">
+                    <Crosshair className="h-4 w-4 text-primary shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-primary">Focus: {activeFocusLever.label}</span>
+                      {activeFocusLever.prompt && (
+                        <p className="text-xs text-muted-foreground truncate">{activeFocusLever.prompt}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Script Panel (visible during call) */}
                 <DialScriptPanel visible={isOnCall} />
 
@@ -693,7 +767,7 @@ export default function DialSessionPage() {
                   </CardTitle>
                   <CardDescription className="flex items-center gap-2">
                     <Keyboard className="h-4 w-4" />
-                    Press 1-5 to select, Enter to save
+                    1-5 outcome · Y/N focus · Enter save
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -813,6 +887,65 @@ export default function DialSessionPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Focus signal — Y/N per call */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Crosshair className="h-3.5 w-3.5 text-primary" />
+                        <Label className="text-sm font-medium">
+                          Focus: {activeFocusLever.label}
+                        </Label>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={focusPracticed === true ? "default" : "outline"}
+                          className={`h-7 w-10 text-xs ${focusPracticed === true ? "" : "bg-transparent"}`}
+                          onClick={() => setFocusPracticed(true)}
+                        >
+                          Y
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={focusPracticed === false ? "default" : "outline"}
+                          className={`h-7 w-10 text-xs ${focusPracticed === false ? "" : "bg-transparent"}`}
+                          onClick={() => setFocusPracticed(false)}
+                        >
+                          N
+                        </Button>
+                      </div>
+                    </div>
+                    {/* Optional second counter: new truth gained */}
+                    {(activePhase.goalCounterKey === "new_truth_gained" ||
+                      activePhase.goalCounterKey === "focus_practiced") && (
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm text-muted-foreground">New truth gained?</Label>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={truthGained === true ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${truthGained === true ? "" : "bg-transparent"}`}
+                            onClick={() => setTruthGained(true)}
+                          >
+                            Y
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={truthGained === false ? "default" : "outline"}
+                            className={`h-7 w-10 text-xs ${truthGained === false ? "" : "bg-transparent"}`}
+                            onClick={() => setTruthGained(false)}
+                          >
+                            N
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Note (optional collapsible) */}
                   <Collapsible open={showDetail} onOpenChange={setShowDetail}>

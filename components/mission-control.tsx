@@ -1,16 +1,10 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -18,20 +12,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Target, TrendingUp, AlertTriangle, Settings2, Check } from "lucide-react"
+import { Target, TrendingUp, AlertTriangle, Check, Settings2 } from "lucide-react"
 import type { Attempt, Task } from "@/lib/store"
+import { useFramework } from "@/hooks/use-framework"
 import {
-  getMissionControlConfig,
-  setMissionControlConfig,
-  getPeriodStart,
+  getPeriodRange,
+  getRemainingDays,
   getPeriodTotalDays,
-  getDaysElapsed,
   getGoalLabel,
   getPeriodLabel,
-  type MissionControlConfig,
-  type GoalPeriod,
-  type GoalMetricType,
-} from "@/lib/mission-control"
+  type GoalCounterKey,
+} from "@/lib/framework"
+import { countSignals } from "@/lib/signals"
 
 interface MissionControlProps {
   attempts: Attempt[]
@@ -39,86 +31,73 @@ interface MissionControlProps {
 }
 
 export function MissionControl({ attempts, tasks }: MissionControlProps) {
-  const [config, setConfig] = useState<MissionControlConfig>(getMissionControlConfig)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const { framework, activePhase, activeFocusLever, setActivePhase, setTarget } = useFramework()
+  const [editingTarget, setEditingTarget] = useState(false)
+  const [targetDraft, setTargetDraft] = useState("")
+  const targetInputRef = useRef<HTMLInputElement>(null)
 
-  // Persist config changes
-  const updateConfig = (updates: Partial<MissionControlConfig>) => {
-    const next = { ...config, ...updates }
-    setConfig(next)
-    setMissionControlConfig(next)
-  }
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingTarget && targetInputRef.current) {
+      targetInputRef.current.focus()
+      targetInputRef.current.select()
+    }
+  }, [editingTarget])
 
-  const updateGoalMetric = (type: GoalMetricType) => {
-    const goalMetric = type === "attempt_outcome"
-      ? { type, outcomes: ["Meeting set"] as string[] }
-      : { type }
-    updateConfig({ goalMetric })
-  }
+  // Compute achieved count
+  const { achieved, remaining, needPerDay, paceStatus } = useMemo(() => {
+    const { start, end } = getPeriodRange(activePhase.period)
+    const totalDays = getPeriodTotalDays(activePhase.period)
+    const remainingDays = getRemainingDays(activePhase.period)
 
-  // Compute achieved
-  const { achieved, remaining, needPerDay, paceStatus, periodLabel, goalLabel } = useMemo(() => {
-    const periodStart = getPeriodStart(config.period)
-    const totalDays = getPeriodTotalDays(config.period)
-    const elapsed = getDaysElapsed(config.period)
+    // Get period attempt IDs
+    const periodAttempts = attempts.filter(a => {
+      const ts = new Date(a.timestamp)
+      return ts >= start && ts < end
+    })
+    const periodAttemptIds = periodAttempts.map(a => a.id)
 
     let achieved = 0
+    const counterKey: GoalCounterKey = activePhase.goalCounterKey
 
-    switch (config.goalMetric.type) {
-      case "attempt_outcome": {
-        const outcomes = config.goalMetric.outcomes || ["Meeting set"]
-        achieved = attempts.filter((a) => {
-          if (new Date(a.timestamp) < periodStart) return false
-          return outcomes.includes(a.outcome)
-        }).length
+    switch (counterKey) {
+      case "focus_practiced":
+      case "new_truth_gained":
+      case "icp_validated":
+        // Count from localStorage signals
+        achieved = countSignals(periodAttemptIds, counterKey)
         break
-      }
-      case "attempt_count": {
-        achieved = attempts.filter((a) => new Date(a.timestamp) >= periodStart).length
+      case "meetings_set":
+        // Count from actual attempt outcomes
+        achieved = periodAttempts.filter(a => a.outcome === "Meeting set").length
         break
-      }
-      case "task_completed": {
-        achieved = tasks.filter((t) => {
-          if (!t.completedAt) return false
-          return new Date(t.completedAt) >= periodStart
-        }).length
-        break
-      }
     }
 
-    const remaining = Math.max(config.target - achieved, 0)
-    const remainingDays = Math.max(totalDays - elapsed + 1, 1)
-    const needPerDay = remaining > 0 ? Math.round((remaining / remainingDays) * 10) / 10 : 0
+    const remaining = Math.max(activePhase.target - achieved, 0)
+    const needPerDay = remaining > 0 ? Math.ceil((remaining / remainingDays) * 10) / 10 : 0
 
-    // Status
+    // Pace status
     let paceStatus: "done" | "on_track" | "tight" | "behind" = "on_track"
     if (remaining === 0) {
       paceStatus = "done"
-    } else if (config.target > 0) {
-      const projected = elapsed > 0 ? (achieved / elapsed) * totalDays : 0
-      if (projected >= config.target) paceStatus = "on_track"
-      else if (projected >= config.target * 0.7) paceStatus = "tight"
+    } else if (activePhase.target > 0) {
+      const normalPerDay = activePhase.target / totalDays
+      if (needPerDay <= normalPerDay) paceStatus = "on_track"
+      else if (needPerDay <= normalPerDay * 2) paceStatus = "tight"
       else paceStatus = "behind"
     }
 
-    return {
-      achieved,
-      remaining,
-      needPerDay,
-      paceStatus,
-      periodLabel: getPeriodLabel(config.period),
-      goalLabel: getGoalLabel(config),
-    }
-  }, [attempts, tasks, config])
+    return { achieved, remaining, needPerDay, paceStatus }
+  }, [attempts, activePhase])
 
   // Overdue tasks
-  const overdueTasks = useMemo(() => {
+  const overdueCount = useMemo(() => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    return tasks.filter((t) => !t.completedAt && new Date(t.dueAt) < today)
+    return tasks.filter(t => !t.completedAt && t.dueAt && new Date(t.dueAt) < today).length
   }, [tasks])
 
-  const progress = config.target > 0 ? Math.min((achieved / config.target) * 100, 100) : 0
+  const progress = activePhase.target > 0 ? Math.min((achieved / activePhase.target) * 100, 100) : 0
 
   const paceColor = {
     done: "text-green-600",
@@ -136,100 +115,91 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
 
   const paceMessage = {
     done: "Goal reached",
-    on_track: `On track — need ${needPerDay}/day`,
-    tight: `Tight — need ${needPerDay}/day`,
-    behind: `Behind — need ${needPerDay}/day`,
+    on_track: `On track \u2014 need ${needPerDay}/day`,
+    tight: `Tight \u2014 need ${needPerDay}/day`,
+    behind: `Behind \u2014 need ${needPerDay}/day`,
   }[paceStatus]
 
-  const integrityColor = overdueTasks.length === 0 ? "text-green-600" : "text-red-600"
-  const integrityBg = overdueTasks.length === 0
+  const integrityColor = overdueCount === 0 ? "text-green-600" : "text-red-600"
+  const integrityBg = overdueCount === 0
     ? "bg-green-50 border-green-200"
     : "bg-red-50 border-red-200"
+
+  const handleTargetSave = () => {
+    const n = parseInt(targetDraft)
+    if (n > 0 && n <= 999) {
+      setTarget(activePhase.key, n)
+    }
+    setEditingTarget(false)
+  }
 
   return (
     <Card className="mb-4">
       <CardContent className="pt-4 pb-3">
+        {/* Controls row */}
+        <div className="flex items-center gap-2 mb-3">
+          <Select value={framework.activePhaseKey} onValueChange={setActivePhase}>
+            <SelectTrigger className="h-7 w-auto text-xs gap-1 px-2">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {framework.phases.map(p => (
+                <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-[10px] text-muted-foreground">
+            Focus: {activeFocusLever.label}
+          </span>
+          <span className="text-[10px] text-muted-foreground ml-auto">
+            {getPeriodLabel(activePhase.period)}
+          </span>
+          <a href="/settings" className="text-muted-foreground hover:text-foreground">
+            <Settings2 className="h-3.5 w-3.5" />
+          </a>
+        </div>
+
+        {/* 3-cell strip */}
         <div className="grid grid-cols-3 gap-4">
           {/* Cell 1: Goal */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Target className="h-3.5 w-3.5 text-primary" />
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  {goalLabel}
-                </span>
-              </div>
-              <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-5 w-5">
-                    <Settings2 className="h-3 w-3 text-muted-foreground" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64" align="end">
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-xs">Goal metric</Label>
-                      <Select
-                        value={config.goalMetric.type}
-                        onValueChange={(v) => updateGoalMetric(v as GoalMetricType)}
-                      >
-                        <SelectTrigger className="h-8 text-xs mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="attempt_outcome">Meetings booked</SelectItem>
-                          <SelectItem value="attempt_count">Total calls</SelectItem>
-                          <SelectItem value="task_completed">Tasks completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Period</Label>
-                      <Select
-                        value={config.period}
-                        onValueChange={(v) => updateConfig({ period: v as GoalPeriod })}
-                      >
-                        <SelectTrigger className="h-8 text-xs mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="iso_week">This week (Mon–Sun)</SelectItem>
-                          <SelectItem value="rolling_7">Rolling 7 days</SelectItem>
-                          <SelectItem value="today">Today</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Target</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={999}
-                        className="h-8 text-xs mt-1"
-                        value={config.target}
-                        onChange={(e) => {
-                          const n = parseInt(e.target.value)
-                          if (n > 0) updateConfig({ target: n })
-                        }}
-                      />
-                    </div>
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setSettingsOpen(false)}
-                    >
-                      Done
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+            <div className="flex items-center gap-1.5">
+              <Target className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                {getGoalLabel(activePhase.goalCounterKey)}
+              </span>
             </div>
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold tabular-nums">{achieved}</span>
-              <span className="text-sm text-muted-foreground">/ {config.target}</span>
+              <span className="text-sm text-muted-foreground">/</span>
+              {editingTarget ? (
+                <Input
+                  ref={targetInputRef}
+                  type="number"
+                  min={1}
+                  max={999}
+                  className="h-6 w-14 text-sm px-1"
+                  value={targetDraft}
+                  onChange={e => setTargetDraft(e.target.value)}
+                  onBlur={handleTargetSave}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") handleTargetSave()
+                    if (e.key === "Escape") setEditingTarget(false)
+                  }}
+                />
+              ) : (
+                <button
+                  className="text-sm text-muted-foreground hover:text-foreground hover:underline tabular-nums"
+                  onClick={() => {
+                    setTargetDraft(activePhase.target.toString())
+                    setEditingTarget(true)
+                  }}
+                >
+                  {activePhase.target}
+                </button>
+              )}
             </div>
             <Progress value={progress} className="h-1.5" />
-            <p className="text-[10px] text-muted-foreground">{periodLabel}</p>
           </div>
 
           {/* Cell 2: Pace */}
@@ -248,30 +218,21 @@ export function MissionControl({ attempts, tasks }: MissionControlProps) {
             )}
           </div>
 
-          {/* Cell 3: Integrity */}
+          {/* Cell 3: Follow-up Quality */}
           <div className={`rounded-lg border p-3 ${integrityBg}`}>
             <div className="flex items-center gap-1.5 mb-1">
-              {overdueTasks.length === 0
+              {overdueCount === 0
                 ? <Check className="h-3.5 w-3.5 text-green-600" />
                 : <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
               }
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Integrity</span>
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Follow-ups</span>
             </div>
-            {overdueTasks.length === 0 ? (
+            {overdueCount === 0 ? (
               <p className="text-sm font-medium text-green-600">Clean</p>
             ) : (
-              <>
-                <p className="text-sm font-medium text-red-600">
-                  {overdueTasks.length} overdue
-                </p>
-                <div className="mt-1 space-y-0.5">
-                  {overdueTasks.slice(0, 3).map((t) => (
-                    <p key={t.id} className="text-[10px] text-red-600 truncate">
-                      {t.title}
-                    </p>
-                  ))}
-                </div>
-              </>
+              <p className={`text-sm font-medium ${integrityColor}`}>
+                {overdueCount} overdue
+              </p>
             )}
           </div>
         </div>

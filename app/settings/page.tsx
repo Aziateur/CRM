@@ -21,7 +21,33 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CheckCircle2, XCircle, RefreshCw, Download, Phone, ExternalLink, Database, Cloud } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { CheckCircle2, XCircle, RefreshCw, Download, Phone, ExternalLink, Database, Cloud, ChevronDown, Plus, Trash2, RotateCcw } from "lucide-react"
+import { useFramework } from "@/hooks/use-framework"
+import {
+  getFramework,
+  setFramework,
+  DEFAULT_FRAMEWORK,
+  type Framework,
+  type Lever,
+  type Phase,
+  type GoalCounterKey,
+  type GoalPeriod,
+} from "@/lib/framework"
 
 // ============================================================================
 // TAB 1 — PIPELINE (sub-components inline: PipelineEditor, FieldEditor, TagManager)
@@ -131,7 +157,320 @@ function SequencesTab() {
 }
 
 // ============================================================================
-// TAB 5 — SYSTEM (Diagnostics + Dev Tools / Integrations)
+// TAB 5 — FRAMEWORK (Modes + Levers)
+// ============================================================================
+
+function FrameworkTab() {
+  const { toast } = useToast()
+  const { framework, saveFramework } = useFramework()
+  const [localFw, setLocalFw] = useState<Framework>(framework)
+  const [newLeverLabel, setNewLeverLabel] = useState("")
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [jsonDraft, setJsonDraft] = useState("")
+
+  // Sync local state when framework changes externally
+  useEffect(() => {
+    setLocalFw(framework)
+  }, [framework])
+
+  const handleSaveSimple = () => {
+    const result = saveFramework(localFw)
+    if (result.ok) {
+      toast({ title: "Framework saved" })
+    } else {
+      toast({ variant: "destructive", title: "Save failed", description: result.error })
+    }
+  }
+
+  const handlePhaseTargetChange = (phaseKey: string, target: number) => {
+    setLocalFw(prev => ({
+      ...prev,
+      phases: prev.phases.map(p =>
+        p.key === phaseKey ? { ...p, target: Math.max(0, Math.min(999, target)) } : p
+      ),
+    }))
+  }
+
+  const handlePhasePeriodChange = (phaseKey: string, period: GoalPeriod) => {
+    setLocalFw(prev => ({
+      ...prev,
+      phases: prev.phases.map(p =>
+        p.key === phaseKey ? { ...p, period } : p
+      ),
+    }))
+  }
+
+  const handlePhaseLeverChange = (phaseKey: string, leverKey: string) => {
+    setLocalFw(prev => ({
+      ...prev,
+      phases: prev.phases.map(p =>
+        p.key === phaseKey ? { ...p, focusLeverKey: leverKey } : p
+      ),
+    }))
+  }
+
+  const handleAddLever = () => {
+    const label = newLeverLabel.trim()
+    if (!label) return
+    const key = "custom." + label.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    if (localFw.levers.some(l => l.key === key)) {
+      toast({ variant: "destructive", title: "Lever key already exists" })
+      return
+    }
+    setLocalFw(prev => ({
+      ...prev,
+      levers: [...prev.levers, { key, label }],
+    }))
+    setNewLeverLabel("")
+  }
+
+  const handleDeleteLever = (leverKey: string) => {
+    // Check if any phase uses this lever
+    const usedBy = localFw.phases.filter(p => p.focusLeverKey === leverKey)
+    if (usedBy.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Cannot delete",
+        description: `Used by phase: ${usedBy.map(p => p.label).join(", ")}`,
+      })
+      return
+    }
+    setLocalFw(prev => ({
+      ...prev,
+      levers: prev.levers.filter(l => l.key !== leverKey),
+    }))
+  }
+
+  const handleMoveLever = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= localFw.levers.length) return
+    setLocalFw(prev => {
+      const levers = [...prev.levers]
+      ;[levers[index], levers[newIndex]] = [levers[newIndex], levers[index]]
+      return { ...prev, levers }
+    })
+  }
+
+  const handleReset = () => {
+    setLocalFw(structuredClone(DEFAULT_FRAMEWORK))
+    toast({ title: "Reset to defaults (save to apply)" })
+  }
+
+  const handleJsonSave = () => {
+    try {
+      const parsed = JSON.parse(jsonDraft)
+      const result = saveFramework(parsed)
+      if (result.ok) {
+        setLocalFw(parsed)
+        toast({ title: "Framework saved from JSON" })
+      } else {
+        toast({ variant: "destructive", title: "Validation failed", description: result.error })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Invalid JSON" })
+    }
+  }
+
+  const hasUnsavedChanges = JSON.stringify(localFw) !== JSON.stringify(framework)
+
+  return (
+    <div className="space-y-6">
+      {/* Active phase */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Phase</h3>
+        <Select
+          value={localFw.activePhaseKey}
+          onValueChange={(v) => setLocalFw(prev => ({ ...prev, activePhaseKey: v }))}
+        >
+          <SelectTrigger className="w-60">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {localFw.phases.map(p => (
+              <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Phases */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Phases</h3>
+        <div className="border rounded-lg divide-y">
+          {localFw.phases.map((phase) => (
+            <div key={phase.key} className="px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">{phase.label}</p>
+                <Badge variant="outline" className="text-xs">{phase.goalCounterKey}</Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">Target</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={999}
+                    className="h-8 text-sm mt-1"
+                    value={phase.target}
+                    onChange={(e) => handlePhaseTargetChange(phase.key, parseInt(e.target.value) || 0)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Period</Label>
+                  <Select value={phase.period} onValueChange={(v) => handlePhasePeriodChange(phase.key, v as GoalPeriod)}>
+                    <SelectTrigger className="h-8 text-xs mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="iso_week">This week</SelectItem>
+                      <SelectItem value="rolling_7">Rolling 7 days</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Focus Lever</Label>
+                  <Select value={phase.focusLeverKey} onValueChange={(v) => handlePhaseLeverChange(phase.key, v)}>
+                    <SelectTrigger className="h-8 text-xs mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {localFw.levers.map(l => (
+                        <SelectItem key={l.key} value={l.key}>{l.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Levers */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Levers</h3>
+        <div className="border rounded-lg divide-y">
+          {localFw.levers.map((lever, i) => (
+            <div key={lever.key} className="flex items-center gap-2 px-4 py-2">
+              <div className="flex flex-col gap-0.5">
+                <button
+                  className="text-muted-foreground hover:text-foreground text-xs leading-none disabled:opacity-30"
+                  disabled={i === 0}
+                  onClick={() => handleMoveLever(i, -1)}
+                >
+                  ▲
+                </button>
+                <button
+                  className="text-muted-foreground hover:text-foreground text-xs leading-none disabled:opacity-30"
+                  disabled={i === localFw.levers.length - 1}
+                  onClick={() => handleMoveLever(i, 1)}
+                >
+                  ▼
+                </button>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{lever.label}</p>
+                <p className="text-[10px] text-muted-foreground font-mono">{lever.key}</p>
+              </div>
+              {lever.prompt && (
+                <p className="text-xs text-muted-foreground truncate max-w-[200px]">{lever.prompt}</p>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={() => handleDeleteLever(lever.key)}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+          ))}
+          {/* Add lever row */}
+          <div className="flex items-center gap-2 px-4 py-2">
+            <Input
+              placeholder="New lever name..."
+              className="h-8 text-sm flex-1"
+              value={newLeverLabel}
+              onChange={(e) => setNewLeverLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddLever() }}
+            />
+            <Button size="sm" variant="outline" className="h-8 bg-transparent" onClick={handleAddLever}>
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Save / Reset */}
+      <div className="flex gap-2">
+        <Button onClick={handleSaveSimple} disabled={!hasUnsavedChanges}>
+          Save Changes
+        </Button>
+        <Button variant="outline" className="bg-transparent" onClick={handleReset}>
+          <RotateCcw className="h-4 w-4 mr-1" />
+          Reset to Defaults
+        </Button>
+      </div>
+
+      {/* Advanced JSON editor */}
+      <Collapsible open={showAdvanced} onOpenChange={(open) => {
+        setShowAdvanced(open)
+        if (open) setJsonDraft(JSON.stringify(localFw, null, 2))
+      }}>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="w-full justify-between">
+            <span className="text-sm text-muted-foreground">Advanced: JSON Editor</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2 space-y-3">
+          <Textarea
+            className="font-mono text-xs min-h-[300px]"
+            value={jsonDraft}
+            onChange={(e) => setJsonDraft(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleJsonSave}>
+              Validate & Save
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-transparent"
+              onClick={() => {
+                navigator.clipboard.writeText(jsonDraft)
+                toast({ title: "Copied to clipboard" })
+              }}
+            >
+              Export (Copy)
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-transparent"
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText()
+                  setJsonDraft(text)
+                  toast({ title: "Pasted from clipboard" })
+                } catch {
+                  toast({ variant: "destructive", title: "Clipboard access denied" })
+                }
+              }}
+            >
+              Import (Paste)
+            </Button>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  )
+}
+
+// ============================================================================
+// TAB 6 — SYSTEM (Diagnostics + Dev Tools / Integrations)
 // ============================================================================
 
 interface DiagCheck {
@@ -384,7 +723,7 @@ export default function SettingsPage() {
       <div className="flex-1 p-6 max-w-4xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Configure your CRM pipeline, automation, data, sequences, and system</p>
+          <p className="text-muted-foreground">Configure your CRM pipeline, automation, framework, data, sequences, and system</p>
         </div>
 
         <Tabs defaultValue="pipeline" className="w-full">
@@ -393,6 +732,7 @@ export default function SettingsPage() {
             <TabsTrigger value="automation">Automation</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="sequences">Sequences</TabsTrigger>
+            <TabsTrigger value="framework">Framework</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
           </TabsList>
 
@@ -410,6 +750,10 @@ export default function SettingsPage() {
 
           <TabsContent value="sequences">
             <SequencesTab />
+          </TabsContent>
+
+          <TabsContent value="framework">
+            <FrameworkTab />
           </TabsContent>
 
           <TabsContent value="system">
