@@ -111,6 +111,27 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
               if (taskError) console.warn("[auto-task] Skipped:", taskError.message)
             })
         }
+
+        // Auto-promote stage based on outcome (single source of truth)
+        const stagePromotion: Record<string, string> = {
+          "Meeting set": "Meeting Booked",
+          "DM reached → Some interest": "Interested",
+        }
+        const dropOutcome = outcome === "DM reached → No interest" && (why === "Targeting" || why === "Value" || why === "Trust")
+        const newStage = dropOutcome ? "Lost" : stagePromotion[outcome]
+
+        if (newStage && lead.stage !== newStage) {
+          supabase
+            .from("leads")
+            .update({
+              stage: newStage,
+              stage_changed_at: new Date().toISOString(),
+            })
+            .eq("id", lead.id)
+            .then(({ error: stageError }) => {
+              if (stageError) console.warn("[auto-stage] Skipped:", stageError.message)
+            })
+        }
       }
 
       reset()

@@ -176,7 +176,7 @@ export interface Contact {
 }
 
 // Constraint options as chips
-export type ConstraintOption = 
+export type ConstraintOption =
   | "Locked contract"
   | "Budget freeze"
   | "Seasonal business"
@@ -448,26 +448,26 @@ export function isDmReached(outcome: AttemptOutcome): boolean {
 // Compute derived stage from attempts
 export function getDerivedStage(attempts: Attempt[]): DerivedStage {
   if (attempts.length === 0) return "Not Contacted"
-  
+
   const lastAttempt = attempts[0] // assumes sorted by timestamp desc
-  
+
   // Check for meeting set
   const hasMeetingSet = attempts.some(a => a.outcome === "Meeting set")
   if (hasMeetingSet) return "Meeting"
-  
+
   // Check for won/lost (would be marked separately in a real app)
   const hasNotInterested = attempts.some(a => a.outcome === "DM reached → No interest")
   if (hasNotInterested && lastAttempt.nextAction === "Drop") return "Lost"
-  
+
   return "Contacted"
 }
 
 // Compute derived status from last attempt
 export function getDerivedStatus(attempts: Attempt[]): DerivedStatus {
   if (attempts.length === 0) return "New"
-  
+
   const lastAttempt = attempts[0] // assumes sorted by timestamp desc
-  
+
   switch (lastAttempt.outcome) {
     case "No connect":
       return "No answer"
@@ -484,23 +484,10 @@ export function getDerivedStatus(attempts: Attempt[]): DerivedStatus {
   }
 }
 
-// Get effective stage: explicit lead.stage if set, otherwise computed from attempts
-export function getEffectiveStage(lead: Lead, attempts: Attempt[]): string {
-  if (lead.stage && lead.stage !== "New") return lead.stage
-  const leadAttempts = attempts
-    .filter((a) => a.leadId === lead.id)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-  if (leadAttempts.length === 0) return lead.stage || "New"
-  // Auto-derive from attempts if stage is still default
-  const derived = getDerivedStage(leadAttempts)
-  switch (derived) {
-    case "Not Contacted": return "New"
-    case "Contacted": return "Contacted"
-    case "Meeting": return "Meeting Booked"
-    case "Won": return "Won"
-    case "Lost": return "Lost"
-    default: return lead.stage || "New"
-  }
+// Get effective stage: always returns lead.stage (canonical source of truth)
+// The drawer and table must show the same stage.
+export function getEffectiveStage(lead: Lead, _attempts?: Attempt[]): string {
+  return lead.stage || "New"
 }
 
 // Calculate session metrics
@@ -522,14 +509,14 @@ export function calculateSessionMetrics(attempts: Attempt[]): SessionMetrics {
   const dmReached = attempts.filter(a => a.dmReached).length
   const interested = attempts.filter(a => a.outcome === "DM reached → Some interest" || a.outcome === "Meeting set").length
   const meetingsSet = attempts.filter(a => a.outcome === "Meeting set").length
-  
+
   // Count why reasons
   const whyCounts: Record<WhyReason, number> = {} as Record<WhyReason, number>
   whyReasonOptions.forEach(r => whyCounts[r] = 0)
   attempts.forEach(a => {
     if (a.why) whyCounts[a.why]++
   })
-  
+
   const topFailureReasons = Object.entries(whyCounts)
     .map(([reason, count]) => ({ reason: reason as WhyReason, count }))
     .filter(r => r.count > 0)
@@ -563,15 +550,15 @@ export function checkStopSignals(
 ): TriggeredStopSignal | null {
   for (const signal of stopSignals) {
     if (!signal.isActive) continue
-    
+
     const recentAttempts = attempts.slice(0, signal.windowSize)
     if (recentAttempts.length < signal.windowSize / 2) continue
-    
+
     const connectedAttempts = recentAttempts.filter(a => a.outcome !== "No connect")
     const dmConnectedAttempts = recentAttempts.filter(a => a.dmReached)
-    
+
     let currentValue = 0
-    
+
     switch (signal.id) {
       case "stop-trust":
         // Trust >= 35% of last 20 DM-connected calls
@@ -610,13 +597,13 @@ export function checkStopSignals(
         }
         continue
     }
-    
+
     if (currentValue >= signal.threshold) {
       const drill = drills.find(d => d.id === signal.recommendedDrillId)
       if (drill) return { signal, currentValue, drill }
     }
   }
-  
+
   return null
 }
 
@@ -638,26 +625,26 @@ export function suggestTopBottomCalls(attempts: Attempt[]): { top: string[]; bot
     const scoreB = getAttemptScore(b)
     return scoreB - scoreA
   })
-  
+
   const top = sorted.slice(0, 5).map(a => a.id)
   const bottom = sorted.slice(-5).reverse().map(a => a.id)
-  
+
   return { top, bottom }
 }
 
 function getAttemptScore(attempt: Attempt): number {
   let score = 0
-  
+
   // Outcome scoring
   if (attempt.outcome === "Meeting set") score += 100
   else if (attempt.outcome === "DM reached → Some interest") score += 50
   else if (attempt.outcome === "DM reached → No interest") score += 10
   else if (attempt.outcome === "Gatekeeper only") score += 5
   else score += 1
-  
+
   // Penalize rep mistakes
   if (attempt.repMistake) score -= 20
-  
+
   return score
 }
 

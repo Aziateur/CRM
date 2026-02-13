@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { useProjectId } from "@/hooks/use-project-id"
@@ -52,8 +52,6 @@ import {
   Mic,
   Trash2,
   ChevronRight,
-  Edit3,
-  Save,
   X,
   AlertCircle,
   Star,
@@ -73,9 +71,8 @@ import {
   type ConstraintOption,
 } from "@/lib/store"
 import { getOutcomeColor } from "@/components/leads-table"
-import { CallsPanel } from "@/components/CallsPanel"
-import { useLeadActivities } from "@/hooks/use-lead-activities"
-import { MessageSquare, Send } from "lucide-react"
+import { InteractionsTimeline } from "@/components/interactions-timeline"
+import { saveLeadField, SaveIndicator } from "@/lib/auto-save"
 
 function timeSince(timestamp: string): string {
   const now = new Date()
@@ -125,27 +122,31 @@ export function LeadDrawer({
   const { stages } = usePipelineStages()
   const { fields: fieldDefinitions } = useFieldDefinitions("lead")
   const { tasks, completeTask } = useTasks({ leadId: lead?.id })
-  const [isEditing, setIsEditing] = useState(false)
   const [editedLead, setEditedLead] = useState<Lead | null>(null)
   const [isAddContactOpen, setIsAddContactOpen] = useState(false)
   const [newContact, setNewContact] = useState({ name: "", phone: "", role: "Other" as ContactRole })
-  const { activities, addNote } = useLeadActivities(lead?.id ?? null)
-  const [noteText, setNoteText] = useState("")
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
 
-  const handleAddNote = async () => {
-    if (!noteText.trim()) return
-    await addNote(noteText)
-    setNoteText("")
+  // Note handler passed to InteractionsTimeline
+  const handleAddNote = async (text: string) => {
+    const supabase = getSupabase()
+    await supabase.from("lead_activities").insert([{
+      lead_id: lead!.id,
+      activity_type: "note",
+      title: "Note",
+      description: text,
+    }])
   }
 
-  // Sync editedLead when lead changes
-  const currentLead = editedLead && editedLead.id === lead?.id ? editedLead : lead
-  if (lead && (!editedLead || editedLead.id !== lead.id)) {
-    queueMicrotask(() => {
+  // Sync editedLead when switching to a different lead
+  useEffect(() => {
+    if (lead) {
       setEditedLead({ ...lead })
-      setIsEditing(false)
-    })
-  }
+      setSaveStatus("idle")
+    }
+  }, [lead?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const currentLead = editedLead && editedLead.id === lead?.id ? editedLead : lead
 
   const leadAttempts = lead
     ? attempts
@@ -158,42 +159,20 @@ export function LeadDrawer({
     ? validObjectiveVerbs.some((v) => currentLead.nextCallObjective?.startsWith(v))
     : false
 
-  const handleSave = async () => {
+  // Auto-save a single field on blur
+  const autoSave = async (field: string, value: unknown) => {
     if (!editedLead) return
-
-    const supabase = getSupabase()
-    const { error } = await supabase
-      .from("leads")
-      .update({
-        company: editedLead.company,
-        phone: editedLead.phone,
-        segment: editedLead.segment,
-        is_decision_maker: editedLead.isDecisionMaker,
-        is_fleet_owner: editedLead.isFleetOwner,
-        operational_context: editedLead.operationalContext,
-        confirmed_facts: editedLead.confirmedFacts,
-        open_questions: editedLead.openQuestions,
-        next_call_objective: editedLead.nextCallObjective,
-        constraints: editedLead.constraints,
-        constraint_other: editedLead.constraintOther,
-        opportunity_angle: editedLead.opportunityAngle,
-        website: editedLead.website,
-        email: editedLead.email,
-        address: editedLead.address,
-        lead_source: editedLead.leadSource,
-        stage: editedLead.stage,
-        deal_value: editedLead.dealValue ?? null,
-        custom_fields: editedLead.customFields ?? {},
-      })
-      .eq("id", editedLead.id)
-
-    if (error) {
-      toast({ variant: "destructive", title: "Failed to save", description: error.message })
-      return
+    setSaveStatus("saving")
+    const ok = await saveLeadField(editedLead.id, field, value)
+    if (ok) {
+      const updatedLead = { ...editedLead }
+      onLeadUpdated(updatedLead)
+      setSaveStatus("saved")
+      setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 2000)
+    } else {
+      setSaveStatus("error")
+      toast({ variant: "destructive", title: "Auto-save failed" })
     }
-
-    onLeadUpdated(editedLead)
-    setIsEditing(false)
   }
 
   const handleStageChange = async (newStage: string) => {
@@ -223,12 +202,11 @@ export function LeadDrawer({
     }
   }
 
-  const handleCustomFieldChange = (fieldKey: string, value: unknown) => {
+  const handleCustomFieldChange = async (fieldKey: string, value: unknown) => {
     if (!editedLead) return
-    setEditedLead({
-      ...editedLead,
-      customFields: { ...(editedLead.customFields || {}), [fieldKey]: value },
-    })
+    const newCustomFields = { ...(editedLead.customFields || {}), [fieldKey]: value }
+    setEditedLead({ ...editedLead, customFields: newCustomFields })
+    await autoSave("custom_fields", newCustomFields)
   }
 
   const handleAddContact = async () => {
@@ -261,35 +239,43 @@ export function LeadDrawer({
     onLeadUpdated(updated)
   }
 
-  const handleSetPrimaryContact = (contactId: string) => {
+  const handleSetPrimaryContact = async (contactId: string) => {
     if (!editedLead) return
     const contact = editedLead.contacts.find((c) => c.id === contactId)
     if (!contact) return
-    setEditedLead({ ...editedLead, contacts: [contact, ...editedLead.contacts.filter((c) => c.id !== contactId)] })
+    const reordered = [contact, ...editedLead.contacts.filter((c) => c.id !== contactId)]
+    setEditedLead({ ...editedLead, contacts: reordered })
+    // Persist to DB
+    const supabase = getSupabase()
+    // Clear old primary, set new
+    await supabase.from("contacts").update({ is_primary: false }).eq("lead_id", editedLead.id)
+    await supabase.from("contacts").update({ is_primary: true }).eq("id", contactId)
   }
 
-  const handleRemoveFact = (index: number) => {
+  const handleRemoveFact = async (index: number) => {
     if (!editedLead) return
     const newFacts = [...(editedLead.confirmedFacts || [])]
     newFacts.splice(index, 1)
     setEditedLead({ ...editedLead, confirmedFacts: newFacts })
+    await autoSave("confirmed_facts", newFacts)
   }
 
-  const handleRemoveQuestion = (index: number) => {
+  const handleRemoveQuestion = async (index: number) => {
     if (!editedLead) return
     const newQs = [...(editedLead.openQuestions || [])]
     newQs.splice(index, 1)
     setEditedLead({ ...editedLead, openQuestions: newQs })
+    await autoSave("open_questions", newQs)
   }
 
-  const handleToggleConstraint = (constraint: ConstraintOption) => {
+  const handleToggleConstraint = async (constraint: ConstraintOption) => {
     if (!editedLead) return
     const current = editedLead.constraints || []
-    if (current.includes(constraint)) {
-      setEditedLead({ ...editedLead, constraints: current.filter((c) => c !== constraint) })
-    } else {
-      setEditedLead({ ...editedLead, constraints: [...current, constraint] })
-    }
+    const newConstraints = current.includes(constraint)
+      ? current.filter((c) => c !== constraint)
+      : [...current, constraint]
+    setEditedLead({ ...editedLead, constraints: newConstraints })
+    await autoSave("constraints", newConstraints)
   }
 
   const ed = editedLead || lead
@@ -335,26 +321,16 @@ export function LeadDrawer({
                 <Button size="sm" variant="outline" className="bg-transparent" onClick={onLogAttempt}>
                   Log Attempt
                 </Button>
-                {isEditing ? (
-                  <Button size="sm" onClick={handleSave}>
-                    <Save className="h-4 w-4 mr-1" />
-                    Save
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setIsEditing(true)}>
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    Edit
-                  </Button>
-                )}
+                <SaveIndicator status={saveStatus} />
               </div>
             </div>
           </div>
 
           <ScrollArea className="flex-1">
             <div className="p-6 space-y-6">
-              {/* LAST ATTEMPT SUMMARY */}
+              {/* LAST ATTEMPT SUMMARY — clickable */}
               {lastAttempt ? (
-                <Card className="bg-muted/30">
+                <Card className="bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => onViewAttempt(lastAttempt)}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">Last Attempt</CardTitle>
                   </CardHeader>
@@ -369,6 +345,7 @@ export function LeadDrawer({
                         {lastAttempt.recordingUrl && <Mic className="h-4 w-4 text-muted-foreground" />}
                         {(lastAttempt.transcript?.length || lastAttempt.callTranscriptText) && <FileText className="h-4 w-4 text-muted-foreground" />}
                         <span className="text-sm text-muted-foreground">{timeSince(lastAttempt.timestamp)}</span>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       </div>
                     </div>
                   </CardContent>
@@ -416,8 +393,7 @@ export function LeadDrawer({
                 </Card>
               )}
 
-              {/* CALLS PANEL */}
-              <CallsPanel leadId={ed.id} phone={ed.phone} />
+              {/* CallsPanel replaced by InteractionsTimeline below */}
 
               {/* ACCOUNT REALITY CARD */}
               <Card className={!ed.nextCallObjective ? "border-amber-500" : ""}>
@@ -444,30 +420,20 @@ export function LeadDrawer({
                       <Label className="text-sm font-medium">Confirmed Facts</Label>
                       <span className="text-xs text-muted-foreground">{(ed.confirmedFacts || []).length}/5</span>
                     </div>
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        {(ed.confirmedFacts || []).map((fact, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="text-sm">•</span>
-                            <Input value={fact} onChange={(e) => { const nf = [...(ed.confirmedFacts || [])]; nf[i] = e.target.value.slice(0, 120); setEditedLead({ ...ed, confirmedFacts: nf }) }} maxLength={120} className="flex-1" />
-                            <Button size="icon" variant="ghost" onClick={() => handleRemoveFact(i)}><X className="h-4 w-4" /></Button>
-                          </div>
-                        ))}
-                        {(ed.confirmedFacts || []).length < 5 && (
-                          <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setEditedLead({ ...ed, confirmedFacts: [...(ed.confirmedFacts || []), ""] })}>
-                            <Plus className="h-4 w-4 mr-1" /> Add Fact
-                          </Button>
-                        )}
-                      </div>
-                    ) : (
-                      <ul className="space-y-1">
-                        {(ed.confirmedFacts || []).length > 0
-                          ? ed.confirmedFacts?.map((fact, i) => (
-                            <li key={i} className="text-sm flex items-start gap-2"><span className="text-muted-foreground">•</span><span>{fact}</span></li>
-                          ))
-                          : <li className="text-sm text-muted-foreground italic">No confirmed facts yet</li>}
-                      </ul>
-                    )}
+                    <div className="space-y-2">
+                      {(ed.confirmedFacts || []).map((fact, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-sm">•</span>
+                          <Input value={fact} onChange={(e) => { const nf = [...(ed.confirmedFacts || [])]; nf[i] = e.target.value.slice(0, 120); setEditedLead({ ...ed, confirmedFacts: nf }) }} onBlur={() => autoSave("confirmed_facts", ed.confirmedFacts)} maxLength={120} className="flex-1" />
+                          <Button size="icon" variant="ghost" onClick={() => handleRemoveFact(i)}><X className="h-4 w-4" /></Button>
+                        </div>
+                      ))}
+                      {(ed.confirmedFacts || []).length < 5 && (
+                        <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setEditedLead({ ...ed, confirmedFacts: [...(ed.confirmedFacts || []), ""] })}>
+                          <Plus className="h-4 w-4 mr-1" /> Add Fact
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <Separator />
@@ -478,30 +444,20 @@ export function LeadDrawer({
                       <Label className="text-sm font-medium">Open Questions</Label>
                       <span className="text-xs text-muted-foreground">{(ed.openQuestions || []).length}/3</span>
                     </div>
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        {(ed.openQuestions || []).map((q, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="text-sm">•</span>
-                            <Input value={q} onChange={(e) => { const nq = [...(ed.openQuestions || [])]; nq[i] = e.target.value.slice(0, 120); setEditedLead({ ...ed, openQuestions: nq }) }} placeholder="Do they... / Can they... / Will they..." maxLength={120} className="flex-1" />
-                            <Button size="icon" variant="ghost" onClick={() => handleRemoveQuestion(i)}><X className="h-4 w-4" /></Button>
-                          </div>
-                        ))}
-                        {(ed.openQuestions || []).length < 3 && (
-                          <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setEditedLead({ ...ed, openQuestions: [...(ed.openQuestions || []), ""] })}>
-                            <Plus className="h-4 w-4 mr-1" /> Add Question
-                          </Button>
-                        )}
-                      </div>
-                    ) : (
-                      <ul className="space-y-1">
-                        {(ed.openQuestions || []).length > 0
-                          ? ed.openQuestions?.map((q, i) => (
-                            <li key={i} className="text-sm flex items-start gap-2"><span className="text-muted-foreground">•</span><span>{q}</span></li>
-                          ))
-                          : <li className="text-sm text-muted-foreground italic">No open questions yet</li>}
-                      </ul>
-                    )}
+                    <div className="space-y-2">
+                      {(ed.openQuestions || []).map((q, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="text-sm">•</span>
+                          <Input value={q} onChange={(e) => { const nq = [...(ed.openQuestions || [])]; nq[i] = e.target.value.slice(0, 120); setEditedLead({ ...ed, openQuestions: nq }) }} onBlur={() => autoSave("open_questions", ed.openQuestions)} placeholder="Do they... / Can they... / Will they..." maxLength={120} className="flex-1" />
+                          <Button size="icon" variant="ghost" onClick={() => handleRemoveQuestion(i)}><X className="h-4 w-4" /></Button>
+                        </div>
+                      ))}
+                      {(ed.openQuestions || []).length < 3 && (
+                        <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setEditedLead({ ...ed, openQuestions: [...(ed.openQuestions || []), ""] })}>
+                          <Plus className="h-4 w-4 mr-1" /> Add Question
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <Separator />
@@ -514,16 +470,10 @@ export function LeadDrawer({
                         {!ed.nextCallObjective && <AlertCircle className="h-4 w-4 text-amber-500" />}
                       </Label>
                     </div>
-                    {isEditing ? (
-                      <div className="space-y-1">
-                        <Input value={ed.nextCallObjective || ""} onChange={(e) => setEditedLead({ ...ed, nextCallObjective: e.target.value })} placeholder="Confirm whether fuel contracts renew quarterly or annually." className={!objectiveIsValid && ed.nextCallObjective ? "border-amber-500" : ""} />
-                        <p className="text-xs text-muted-foreground">Must start with: Confirm, Disqualify, Book, Identify, or Test</p>
-                      </div>
-                    ) : (
-                      <p className={`text-sm ${!ed.nextCallObjective ? "text-amber-500 italic" : ""}`}>
-                        {ed.nextCallObjective || "No objective set - click Edit to add one"}
-                      </p>
-                    )}
+                    <div className="space-y-1">
+                      <Input value={ed.nextCallObjective || ""} onChange={(e) => setEditedLead({ ...ed, nextCallObjective: e.target.value })} onBlur={() => autoSave("next_call_objective", ed.nextCallObjective)} placeholder="Confirm whether fuel contracts renew quarterly or annually." className={!objectiveIsValid && ed.nextCallObjective ? "border-amber-500" : ""} />
+                      <p className="text-xs text-muted-foreground">Must start with: Confirm, Disqualify, Book, Identify, or Test</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -537,90 +487,56 @@ export function LeadDrawer({
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label className="text-xs text-muted-foreground">Segment</Label>
-                      {isEditing ? (
-                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1" value={ed.segment} onChange={(e) => setEditedLead({ ...ed, segment: e.target.value })}>
-                          {segmentOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ) : (
-                        <p className="text-sm mt-1">{ed.segment}</p>
-                      )}
+                      <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1" value={ed.segment} onChange={(e) => { setEditedLead({ ...ed, segment: e.target.value }); autoSave("segment", e.target.value) }}>
+                        {segmentOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Decision Maker?</Label>
-                      {isEditing ? (
-                        <div className="flex gap-1 mt-1">
-                          {(["yes", "no", "unknown"] as const).map((v) => (
-                            <Button key={v} type="button" size="sm" variant={ed.isDecisionMaker === v ? "default" : "outline"} className={ed.isDecisionMaker === v ? "" : "bg-transparent"} onClick={() => setEditedLead({ ...ed, isDecisionMaker: v })}>
-                              {v === "yes" ? "Yes" : v === "no" ? "No" : "?"}
-                            </Button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm mt-1 capitalize">{ed.isDecisionMaker || "Unknown"}</p>
-                      )}
+                      <div className="flex gap-1 mt-1">
+                        {(["yes", "no", "unknown"] as const).map((v) => (
+                          <Button key={v} type="button" size="sm" variant={ed.isDecisionMaker === v ? "default" : "outline"} className={ed.isDecisionMaker === v ? "" : "bg-transparent"} onClick={() => { setEditedLead({ ...ed, isDecisionMaker: v }); autoSave("is_decision_maker", v) }}>
+                            {v === "yes" ? "Yes" : v === "no" ? "No" : "?"}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <Label className="text-xs text-muted-foreground">Fleet Owner?</Label>
-                      {isEditing ? (
-                        <div className="flex gap-1 mt-1">
-                          {(["yes", "no", "unknown"] as const).map((v) => (
-                            <Button key={v} type="button" size="sm" variant={ed.isFleetOwner === v ? "default" : "outline"} className={ed.isFleetOwner === v ? "" : "bg-transparent"} onClick={() => setEditedLead({ ...ed, isFleetOwner: v })}>
-                              {v === "yes" ? "Yes" : v === "no" ? "No" : "?"}
-                            </Button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm mt-1 capitalize">{ed.isFleetOwner || "Unknown"}</p>
-                      )}
+                      <div className="flex gap-1 mt-1">
+                        {(["yes", "no", "unknown"] as const).map((v) => (
+                          <Button key={v} type="button" size="sm" variant={ed.isFleetOwner === v ? "default" : "outline"} className={ed.isFleetOwner === v ? "" : "bg-transparent"} onClick={() => { setEditedLead({ ...ed, isFleetOwner: v }); autoSave("is_fleet_owner", v) }}>
+                            {v === "yes" ? "Yes" : v === "no" ? "No" : "?"}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
                   <div>
                     <Label className="text-xs text-muted-foreground">Operational Context</Label>
-                    {isEditing ? (
-                      <Textarea value={ed.operationalContext || ""} onChange={(e) => setEditedLead({ ...ed, operationalContext: e.target.value })} placeholder="Facts about their operating environment, not opinions." className="mt-1" rows={2} />
-                    ) : (
-                      <p className="text-sm mt-1 text-muted-foreground">{ed.operationalContext || "-"}</p>
-                    )}
+                    <Textarea value={ed.operationalContext || ""} onChange={(e) => setEditedLead({ ...ed, operationalContext: e.target.value })} onBlur={() => autoSave("operational_context", ed.operationalContext)} placeholder="Facts about their operating environment, not opinions." className="mt-1" rows={2} />
                   </div>
 
                   <div>
                     <Label className="text-xs text-muted-foreground">Constraints</Label>
-                    {isEditing ? (
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {constraintOptions.map((c) => (
-                          <Badge key={c} variant={(ed.constraints || []).includes(c) ? "default" : "outline"} className="cursor-pointer" onClick={() => handleToggleConstraint(c)}>{c}</Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(ed.constraints || []).length > 0
-                          ? ed.constraints?.map((c) => <Badge key={c} variant="secondary">{c}</Badge>)
-                          : <span className="text-sm text-muted-foreground">-</span>}
-                      </div>
-                    )}
-                    {isEditing && (
-                      <Input value={ed.constraintOther || ""} onChange={(e) => setEditedLead({ ...ed, constraintOther: e.target.value })} placeholder="Other constraint..." className="mt-2" />
-                    )}
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {constraintOptions.map((c) => (
+                        <Badge key={c} variant={(ed.constraints || []).includes(c) ? "default" : "outline"} className="cursor-pointer" onClick={() => handleToggleConstraint(c)}>{c}</Badge>
+                      ))}
+                    </div>
+                    <Input value={ed.constraintOther || ""} onChange={(e) => setEditedLead({ ...ed, constraintOther: e.target.value })} onBlur={() => autoSave("constraint_other", ed.constraintOther)} placeholder="Other constraint..." className="mt-2" />
                   </div>
 
                   <div>
                     <Label className="text-xs text-muted-foreground">Opportunity Angle</Label>
-                    {isEditing ? (
-                      <Input value={ed.opportunityAngle || ""} onChange={(e) => setEditedLead({ ...ed, opportunityAngle: e.target.value.slice(0, 100) })} placeholder="One-sentence reason this product could matter to them." className="mt-1" maxLength={100} />
-                    ) : (
-                      <p className="text-sm mt-1 text-muted-foreground">{ed.opportunityAngle || "-"}</p>
-                    )}
+                    <Input value={ed.opportunityAngle || ""} onChange={(e) => setEditedLead({ ...ed, opportunityAngle: e.target.value.slice(0, 100) })} onBlur={() => autoSave("opportunity_angle", ed.opportunityAngle)} placeholder="One-sentence reason this product could matter to them." className="mt-1" maxLength={100} />
                   </div>
 
                   {/* Deal Value (pipeline) */}
                   <div>
                     <Label className="text-xs text-muted-foreground">Deal Value</Label>
-                    {isEditing ? (
-                      <Input type="number" value={ed.dealValue ?? ""} onChange={(e) => setEditedLead({ ...ed, dealValue: e.target.value ? Number(e.target.value) : undefined })} placeholder="0.00" className="mt-1" />
-                    ) : (
-                      <p className="text-sm mt-1 text-muted-foreground">{ed.dealValue != null ? `$${ed.dealValue.toLocaleString()}` : "-"}</p>
-                    )}
+                    <Input type="number" value={ed.dealValue ?? ""} onChange={(e) => setEditedLead({ ...ed, dealValue: e.target.value ? Number(e.target.value) : undefined })} onBlur={() => autoSave("deal_value", ed.dealValue ?? null)} placeholder="0.00" className="mt-1" />
                   </div>
 
                   <Accordion type="single" collapsible className="w-full">
@@ -630,14 +546,11 @@ export function LeadDrawer({
                         <div className="space-y-3">
                           {(["website", "email", "address", "leadSource"] as const).map((field) => {
                             const label = field === "leadSource" ? "Lead Source" : field.charAt(0).toUpperCase() + field.slice(1)
+                            const dbField = field === "leadSource" ? "lead_source" : field
                             return (
                               <div key={field}>
                                 <Label className="text-xs text-muted-foreground">{label}</Label>
-                                {isEditing ? (
-                                  <Input value={(ed[field] as string) || ""} onChange={(e) => setEditedLead({ ...ed, [field]: e.target.value })} className="mt-1" />
-                                ) : (
-                                  <p className="text-sm mt-1">{(ed[field] as string) || "-"}</p>
-                                )}
+                                <Input value={(ed[field] as string) || ""} onChange={(e) => setEditedLead({ ...ed, [field]: e.target.value })} onBlur={() => autoSave(dbField, ed[field])} className="mt-1" />
                               </div>
                             )
                           })}
@@ -661,7 +574,7 @@ export function LeadDrawer({
                         field={field}
                         value={ed.customFields?.[field.fieldKey] ?? null}
                         onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
-                        readOnly={!isEditing}
+                        readOnly={false}
                       />
                     ))}
                   </CardContent>
@@ -673,11 +586,9 @@ export function LeadDrawer({
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-medium">Contacts</CardTitle>
-                    {isEditing && (
-                      <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setIsAddContactOpen(true)}>
-                        <Plus className="h-4 w-4 mr-1" /> Add
-                      </Button>
-                    )}
+                    <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setIsAddContactOpen(true)}>
+                      <Plus className="h-4 w-4 mr-1" /> Add
+                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -686,7 +597,7 @@ export function LeadDrawer({
                       {ed.contacts.map((contact, i) => (
                         <div key={contact.id} className="flex items-center justify-between p-2 rounded border">
                           <div className="flex items-center gap-3">
-                            <Button size="icon" variant="ghost" className={i === 0 ? "text-amber-500" : "text-muted-foreground"} onClick={() => isEditing && handleSetPrimaryContact(contact.id)} disabled={!isEditing}>
+                            <Button size="icon" variant="ghost" className={i === 0 ? "text-amber-500" : "text-muted-foreground"} onClick={() => handleSetPrimaryContact(contact.id)}>
                               <Star className={`h-4 w-4 ${i === 0 ? "fill-current" : ""}`} />
                             </Button>
                             <div>
@@ -695,22 +606,18 @@ export function LeadDrawer({
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {isEditing ? (
-                              <div className="flex gap-1">
-                                {contactRoleOptions.map((role) => (
-                                  <Button key={role} size="sm" variant={contact.role === role ? "default" : "outline"} className={contact.role === role ? "" : "bg-transparent"} onClick={() => {
-                                    const nc = [...ed.contacts]; nc[i] = { ...contact, role }; setEditedLead({ ...ed, contacts: nc })
-                                  }}>{role}</Button>
-                                ))}
-                              </div>
-                            ) : (
-                              <Badge variant="outline">{contact.role}</Badge>
-                            )}
-                            {isEditing && (
-                              <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-red-600" onClick={() => handleDeleteContact(contact.id)}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
+                            <div className="flex gap-1">
+                              {contactRoleOptions.map((role) => (
+                                <Button key={role} size="sm" variant={contact.role === role ? "default" : "outline"} className={contact.role === role ? "" : "bg-transparent"} onClick={async () => {
+                                  const nc = [...ed.contacts]; nc[i] = { ...contact, role }; setEditedLead({ ...ed, contacts: nc })
+                                  const supabase = getSupabase()
+                                  await supabase.from("contacts").update({ role }).eq("id", contact.id)
+                                }}>{role}</Button>
+                              ))}
+                            </div>
+                            <Button size="icon" variant="ghost" className="text-muted-foreground hover:text-red-600" onClick={() => handleDeleteContact(contact.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
                       ))}
@@ -721,83 +628,16 @@ export function LeadDrawer({
                 </CardContent>
               </Card>
 
-              {/* NOTES & ACTIVITY */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <MessageSquare className="h-4 w-4" />
-                    Notes & Activity
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex gap-2">
-                    <Input
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddNote() } }}
-                      placeholder="Add a note..."
-                      className="flex-1"
-                    />
-                    <Button size="icon" variant="ghost" onClick={handleAddNote} disabled={!noteText.trim()}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  {activities.length > 0 && (
-                    <div className="space-y-2 pt-1">
-                      {activities.map((activity) => (
-                        <div key={activity.id} className="flex gap-3 text-sm">
-                          <div className="shrink-0 mt-1">
-                            {activity.activityType === "note" && <MessageSquare className="h-3.5 w-3.5 text-blue-500" />}
-                            {activity.activityType === "call" && <Phone className="h-3.5 w-3.5 text-green-500" />}
-                            {activity.activityType === "stage_change" && <ChevronRight className="h-3.5 w-3.5 text-amber-500" />}
-                            {activity.activityType === "tag_change" && <Edit3 className="h-3.5 w-3.5 text-indigo-500" />}
-                            {activity.activityType === "field_change" && <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />}
-                            {activity.activityType === "task_created" && <Clock className="h-3.5 w-3.5 text-blue-500" />}
-                            {activity.activityType === "task_completed" && <Check className="h-3.5 w-3.5 text-green-600" />}
-                            {(activity.activityType === "email" || activity.activityType === "sms") && <Send className="h-3.5 w-3.5 text-muted-foreground" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm">{activity.title || activity.description}</p>
-                            <p className="text-xs text-muted-foreground">{timeSince(activity.createdAt)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              {/* UNIFIED INTERACTIONS TIMELINE — replaces Notes & Activity + Attempts timeline + CallsPanel */}
+              <InteractionsTimeline
+                leadId={ed.id}
+                attempts={leadAttempts}
+                onViewAttempt={onViewAttempt}
+                onAddNote={handleAddNote}
+              />
 
               {/* SEQUENCES */}
               <SequenceEnrollmentWidget leadId={ed.id} />
-
-              {/* ATTEMPTS TIMELINE */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Attempts ({leadAttempts.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {leadAttempts.length > 0 ? (
-                    <div className="space-y-2">
-                      {leadAttempts.map((attempt) => (
-                        <div key={attempt.id} className="flex items-center justify-between p-2 rounded border cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => onViewAttempt(attempt)}>
-                          <div className="flex items-center gap-2">
-                            <Badge className={getOutcomeColor(attempt.outcome)} variant="secondary">{attempt.outcome}</Badge>
-                            {attempt.why && <span className="text-xs text-muted-foreground">{attempt.why}</span>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {attempt.recordingUrl && <Mic className="h-3 w-3 text-muted-foreground" />}
-                            {(attempt.transcript?.length || attempt.callTranscriptText) && <FileText className="h-3 w-3 text-muted-foreground" />}
-                            <span className="text-xs text-muted-foreground">{timeSince(attempt.timestamp)}</span>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-2">No attempts yet</p>
-                  )}
-                </CardContent>
-              </Card>
             </div>
           </ScrollArea>
         </SheetContent>

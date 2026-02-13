@@ -16,7 +16,7 @@ Dalio CRM is a sales pipeline management tool built for high-volume cold calling
 - `components/` — React components (UI primitives in `components/ui/`, feature components at root)
 - `hooks/` — Custom React hooks (`use-leads`, `use-attempts`, `use-tasks`, `use-project-id`, etc.)
 - `lib/` — Core libraries (`auth-context.tsx`, `supabase.ts`, `store.ts` with types/enums)
-- `supabase/migrations/` — SQL migration files (20 files, applied sequentially)
+- `supabase/migrations/` — SQL migration files (21 files, applied sequentially)
 - `scripts/` — Utility scripts (e.g., `seed-users.ts`)
 - `.agent/workflows/` — Agent workflow definitions
 
