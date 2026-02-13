@@ -2,14 +2,14 @@
 
 import * as React from "react"
 import {
-  Building2,
-  ChevronUp,
-  Contact,
   LayoutDashboard,
-  ListTodo,
-  LogOut,
+  BookOpen,
+  Phone,
+  Repeat,
   Settings,
   Shield,
+  ChevronUp,
+  LogOut,
   User2,
 } from "lucide-react"
 
@@ -52,19 +52,19 @@ export function AppSidebar() {
       icon: LayoutDashboard,
     },
     {
-      title: "Contacts",
-      url: "/contacts",
-      icon: Contact,
+      title: "Playbook",
+      url: "/playbook",
+      icon: BookOpen,
     },
     {
-      title: "Actions",
-      url: "/actions",
-      icon: ListTodo,
+      title: "Dial Session",
+      url: "/dial-session",
+      icon: Phone,
     },
     {
-      title: "Projects",
-      url: "/projects",
-      icon: Building2,
+      title: "Batch Review",
+      url: "/batch-review",
+      icon: Repeat,
     },
     {
       title: "Settings",
@@ -85,7 +85,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Application</SidebarGroupLabel>
+          <SidebarGroupLabel>Sales CRM</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
@@ -129,7 +129,7 @@ export function AppSidebar() {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="bottom"
+                side="top"
                 align="end"
                 sideOffset={4}
               >
