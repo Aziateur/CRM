@@ -74,25 +74,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading: true,
     })
 
-    // Hydrate from localStorage on mount
+    // Hydrate from localStorage on mount, then validate the session token
     useEffect(() => {
-        try {
-            const storedUser = localStorage.getItem(STORAGE_KEY_USER)
-            const storedProjects = localStorage.getItem(STORAGE_KEY_PROJECTS)
-            const storedProjectId = localStorage.getItem(STORAGE_KEY_PROJECT_ID)
+        const hydrate = async () => {
+            try {
+                const storedUser = localStorage.getItem(STORAGE_KEY_USER)
+                const storedProjects = localStorage.getItem(STORAGE_KEY_PROJECTS)
+                const storedProjectId = localStorage.getItem(STORAGE_KEY_PROJECT_ID)
+                const storedToken = localStorage.getItem(STORAGE_KEY_TOKEN)
 
-            if (storedUser) {
-                const user = JSON.parse(storedUser) as AuthUser
-                const projects = storedProjects ? (JSON.parse(storedProjects) as UserProject[]) : []
-                const currentProjectId = storedProjectId || (projects.length > 0 ? projects[0].id : null)
+                if (storedUser && storedToken) {
+                    const user = JSON.parse(storedUser) as AuthUser
+                    const projects = storedProjects ? (JSON.parse(storedProjects) as UserProject[]) : []
+                    const currentProjectId = storedProjectId || (projects.length > 0 ? projects[0].id : null)
 
-                setState({ user, projects, currentProjectId, loading: false })
-            } else {
+                    // Optimistically set state so the UI doesn't flash the login screen
+                    setState({ user, projects, currentProjectId, loading: true })
+
+                    // Validate the session token against the database
+                    try {
+                        const supabase = getSupabase()
+                        const { data, error } = await supabase.rpc("validate_session", {
+                            p_token: storedToken,
+                        })
+
+                        if (error || !data?.valid) {
+                            // Token expired or invalid — force logout
+                            console.warn("[Auth] Session expired or invalid, logging out.")
+                            localStorage.removeItem(STORAGE_KEY_USER)
+                            localStorage.removeItem(STORAGE_KEY_PROJECTS)
+                            localStorage.removeItem(STORAGE_KEY_PROJECT_ID)
+                            localStorage.removeItem(STORAGE_KEY_TOKEN)
+                            resetSupabaseClient()
+                            setState({ user: null, projects: [], currentProjectId: null, loading: false })
+                            return
+                        }
+
+                        // Session is valid — update user data from server (in case role/name changed)
+                        if (data.user) {
+                            const freshUser: AuthUser = {
+                                id: data.user.id,
+                                email: data.user.email,
+                                name: data.user.name,
+                                system_role: data.user.system_role,
+                                avatar_url: data.user.avatar_url,
+                            }
+                            persist(freshUser, projects, currentProjectId)
+                            setState({ user: freshUser, projects, currentProjectId, loading: false })
+                        } else {
+                            setState({ user, projects, currentProjectId, loading: false })
+                        }
+                    } catch (validationError) {
+                        // Network error during validation — trust localStorage for offline resilience
+                        console.warn("[Auth] Could not validate session, using cached credentials.")
+                        setState({ user, projects, currentProjectId, loading: false })
+                    }
+                } else {
+                    setState((prev) => ({ ...prev, loading: false }))
+                }
+            } catch {
                 setState((prev) => ({ ...prev, loading: false }))
             }
-        } catch {
-            setState((prev) => ({ ...prev, loading: false }))
         }
+
+        hydrate()
     }, [])
 
     // Persist to localStorage whenever auth state changes

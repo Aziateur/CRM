@@ -20,7 +20,7 @@ export function getSupabase(): SupabaseClient {
     }
   }
 
-  console.log("[Supabase] Initializing client with headers:", Object.keys(headers))
+
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers }
   })
