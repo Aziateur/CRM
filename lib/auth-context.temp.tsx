@@ -1,3 +1,6 @@
+Let me provide you with the complete refactored file code:
+
+```typescript
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
@@ -123,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { success: false, error: error.message }
             }
 
-            const result = data as {
+            const result = data as { 
                 success: boolean
                 error?: string
                 token?: string
@@ -136,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 projects?: UserProject[]
             }
-
+            
             if (!result.success) {
                 return { success: false, error: result.error || "Invalid credentials" }
             }
@@ -182,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { success: false, error: error.message }
             }
 
-            const result = data as {
+            const result = data as { 
                 success: boolean
                 error?: string
                 token?: string
@@ -195,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
                 project?: { id: string; name: string }
             }
-
+            
             if (!result.success) {
                 return { success: false, error: result.error || "Registration failed" }
             }
@@ -342,7 +345,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
             const supabase = getSupabase()
-
+            
             // Update the user in the database
             const { error } = await supabase
                 .from("users")
@@ -392,3 +395,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
+```
+
+## Summary of Changes
+
+The refactored `lib/auth-context.tsx` now includes:
+
+1. **Updated `AuthUser` interface** with:
+   - `system_role: 'admin' | 'user'` - User's system-wide role
+   - `avatar_url: string | null` - Optional avatar URL
+
+2. **Enhanced login logic** - Properly hydrates `system_role` and `avatar_url` from the RPC response
+
+3. **Enhanced register logic** - Properly hydrates `system_role` and `avatar_url` from the RPC response
+
+4. **Updated `persist` function** - Now saves the complete user object including new fields
+
+5. **New `updateUser` function** - Allows updating:
+   - User's name
+   - User's avatar_url
+   - Syncs changes to Supabase `users` table
+   - Updates local state and localStorage
+   - Returns success/error response
+
+6. **Added `updateUser` to context value** - Exposed through the `AuthContextValue` interface
+
+The implementation maintains the existing patterns (client-side only, proper error handling, localStorage persistence) and integrates seamlessly with the custom auth system.

@@ -25,71 +25,55 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 
-interface Attempt {
-    id: string
-    timestamp: string
-    lead_id: string
-    dm_reached: boolean
-    outcome?: string
-    lead?: {
-        full_name?: string
-    }
-}
+// Use the existing Attempt type from store if compatible, or define a local one that matches what useAttempts returns
+// The Dashboard uses useAttempts which returns store.Attempt.
+// Let's import Attempt from hooks/use-attempts or store.
+import type { Attempt } from "@/lib/store"
 
 interface CallSession {
     id: string
     duration_sec?: number
 }
 
-export default function AnalyticsPage() {
+interface AnalyticsSectionProps {
+    attempts: Attempt[]
+    className?: string
+}
+
+export function AnalyticsSection({ attempts, className }: AnalyticsSectionProps) {
     const projectId = useProjectId()
-    const [attempts, setAttempts] = useState<Attempt[]>([])
     const [callSessions, setCallSessions] = useState<CallSession[]>([])
-    const [loading, setLoading] = useState(true)
+    // We assume attempts are passed in, so we only load session data.
+    // Ideally we might want a loading state for sessions, but we can just show 0 or loading placeholder for duration.
 
     useEffect(() => {
         if (!projectId) return
 
-        const fetchData = async () => {
-            try {
-                const supabase = getSupabase()
+        const fetchSessions = async () => {
+            const supabase = getSupabase()
+            const { data, error } = await supabase
+                .from("call_sessions")
+                .select("*")
+                .eq("project_id", projectId)
 
-                const [attemptsRes, sessionsRes] = await Promise.all([
-                    supabase
-                        .from("attempts")
-                        .select("*, lead:leads(full_name)")
-                        .eq("project_id", projectId)
-                        .order("timestamp", { ascending: false })
-                        .limit(100),
-                    supabase
-                        .from("call_sessions")
-                        .select("*")
-                        .eq("project_id", projectId),
-                ])
-
-                if (attemptsRes.error) throw attemptsRes.error
-                if (sessionsRes.error) throw sessionsRes.error
-
-                setAttempts(attemptsRes.data || [])
-                setCallSessions(sessionsRes.data || [])
-            } catch (error) {
-                console.error("Error fetching analytics data:", error)
-            } finally {
-                setLoading(false)
+            if (!error && data) {
+                setCallSessions(data)
             }
         }
 
-        fetchData()
+        fetchSessions()
     }, [projectId])
 
     const kpis = useMemo(() => {
         const today = startOfDay(new Date())
+        // Attempt.timestamp is string ISO
         const callsToday = attempts.filter(
             (a) => startOfDay(new Date(a.timestamp)).getTime() === today.getTime()
         ).length
 
         const totalAttempts = attempts.length
-        const connects = attempts.filter((a) => a.dm_reached).length
+        // Attempt.dmReached is boolean
+        const connects = attempts.filter((a) => a.dmReached).length
         const connectRate =
             totalAttempts > 0 ? ((connects / totalAttempts) * 100).toFixed(1) : "0.0"
 
@@ -120,7 +104,7 @@ export default function AnalyticsPage() {
             const dayData = last7Days.find((d) => d.date === attemptDay)
             if (dayData) {
                 dayData.calls++
-                if (attempt.dm_reached) dayData.connects++
+                if (attempt.dmReached) dayData.connects++
             }
         })
 
@@ -131,23 +115,10 @@ export default function AnalyticsPage() {
         }))
     }, [attempts])
 
-    if (!projectId) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <p className="text-muted-foreground">No project selected</p>
-            </div>
-        )
-    }
+    if (!projectId) return null
 
     return (
-        <div className="flex flex-col gap-6 p-6">
-            <div>
-                <h1 className="text-3xl font-bold">Analytics</h1>
-                <p className="text-muted-foreground">
-                    Call performance and engagement metrics
-                </p>
-            </div>
-
+        <div className={`flex flex-col gap-6 ${className || ""}`}>
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -204,16 +175,13 @@ export default function AnalyticsPage() {
                         <CardTitle>Recent Activity</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {loading ? (
-                            <p className="text-sm text-muted-foreground">Loading...</p>
-                        ) : attempts.length === 0 ? (
+                        {attempts.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No activity yet</p>
                         ) : (
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Time</TableHead>
-                                        <TableHead>Lead</TableHead>
                                         <TableHead>Outcome</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -224,15 +192,12 @@ export default function AnalyticsPage() {
                                                 {format(new Date(attempt.timestamp), "h:mm a")}
                                             </TableCell>
                                             <TableCell>
-                                                {attempt.lead?.full_name || "Unknown"}
-                                            </TableCell>
-                                            <TableCell>
                                                 <Badge
                                                     variant={
-                                                        attempt.dm_reached ? "default" : "secondary"
+                                                        attempt.dmReached ? "default" : "secondary"
                                                     }
                                                 >
-                                                    {attempt.dm_reached ? "Connected" : "No Answer"}
+                                                    {attempt.dmReached ? "Connected" : "No Answer"}
                                                 </Badge>
                                             </TableCell>
                                         </TableRow>

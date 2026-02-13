@@ -52,7 +52,7 @@ async function run() {
 
     const migrationsDir = path.resolve(__dirname, '../supabase/migrations');
     const files = [
-        '20260213000004_allow_project_delete.sql'
+        '20260213000006_update_auth_rpc_for_new_fields.sql'
     ];
 
     for (const file of files) {

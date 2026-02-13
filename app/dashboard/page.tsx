@@ -8,6 +8,7 @@ import { useTasks } from "@/hooks/use-tasks"
 import { useDialSession } from "@/hooks/use-dial-session"
 import { DashboardWidgets } from "@/components/dashboard-widgets"
 import { MissionControl } from "@/components/mission-control"
+import { AnalyticsSection } from "@/components/analytics-section"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardPage() {
@@ -35,14 +36,18 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-          <MissionControl attempts={attempts} tasks={tasks} />
-          <DashboardWidgets
-            leads={leads}
-            attempts={attempts}
-            stages={stages}
-            tasks={tasks}
-            sessionStartedAt={session?.status === "active" ? session.startedAt : null}
-          />
+            <MissionControl attempts={attempts} tasks={tasks} />
+            <DashboardWidgets
+              leads={leads}
+              attempts={attempts}
+              stages={stages}
+              tasks={tasks}
+              sessionStartedAt={session?.status === "active" ? session.startedAt : null}
+            />
+            <div className="mt-8">
+              <h2 className="text-xl font-semibold mb-4">Analytics</h2>
+              <AnalyticsSection attempts={attempts} />
+            </div>
           </>
         )}
       </div>

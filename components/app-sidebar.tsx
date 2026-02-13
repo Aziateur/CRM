@@ -1,97 +1,102 @@
+```tsx
 "use client"
 
-import { Users, BookOpen, Settings, BarChart3, LayoutDashboard, Phone, ClipboardList, LogOut } from "lucide-react"
+import * as React from "react"
+import {
+  Building2,
+  ChevronUp,
+  Contact,
+  LayoutDashboard,
+  ListTodo,
+  LogOut,
+  Settings,
+  Shield,
+  User2,
+} from "lucide-react"
 
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarHeader,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { ProjectSwitcher } from "@/components/project-switcher"
 import { useAuth } from "@/lib/auth-context"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
-const menuItems = [
-  {
-    title: "Leads",
-    url: "/",
-    icon: Users,
-  },
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Analytics",
-    url: "/analytics",
-    icon: BarChart3,
-  },
-  {
-    title: "Dial Session",
-    url: "/dial-session",
-    icon: Phone,
-  },
-  {
-    title: "Batch Review",
-    url: "/batch-review",
-    icon: ClipboardList,
-  },
-  {
-    title: "Playbook",
-    url: "/playbook",
-    icon: BookOpen,
-  },
-  {
-    title: "Settings",
-    url: "/settings",
-    icon: Settings,
-  },
-]
-
 export function AppSidebar() {
+  const { user, signOut } = useAuth()
   const pathname = usePathname()
-  const { user, logout } = useAuth()
 
-  const initials = user
-    ? user.name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
-    : "??"
+  const menuItems = [
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Contacts",
+      url: "/contacts",
+      icon: Contact,
+    },
+    {
+      title: "Actions",
+      url: "/actions",
+      icon: ListTodo,
+    },
+    {
+      title: "Projects",
+      url: "/projects",
+      icon: Building2,
+    },
+    {
+      title: "Settings",
+      url: "/settings",
+      icon: Settings,
+    },
+  ]
+
+  if (user?.system_role === "admin") {
+    menuItems.push({
+      title: "Admin",
+      url: "/admin",
+      icon: Shield,
+    })
+  }
 
   return (
-    <Sidebar className="border-r">
-      <SidebarHeader className="p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <BarChart3 className="h-4 w-4" />
-          </div>
-          <span className="text-lg font-semibold">Dalio CRM</span>
-        </div>
-        {/* Project Switcher */}
-        <ProjectSwitcher />
-      </SidebarHeader>
+    <Sidebar>
       <SidebarContent>
         <SidebarGroup>
+          <SidebarGroupLabel>Application</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.url}
+                  >
                     <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
+                      <item.icon />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -101,28 +106,72 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-sm font-medium truncate">{user?.name || "User"}</span>
-            <span className="text-xs text-muted-foreground truncate">{user?.email || ""}</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={logout}
-            className="shrink-0 h-8 w-8 text-muted-foreground hover:text-destructive"
-            title="Sign out"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
-        </div>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  size="lg"
+                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage src={user?.avatar_url || undefined} alt={user?.name || "User"} />
+                    <AvatarFallback className="rounded-lg">
+                      {user?.name?.substring(0, 2).toUpperCase() || "CN"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">{user?.name || "User"}</span>
+                    <span className="truncate text-xs">{user?.email || ""}</span>
+                  </div>
+                  <ChevronUp className="ml-auto size-4" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                side="bottom"
+                align="end"
+                sideOffset={4}
+              >
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage src={user?.avatar_url || undefined} alt={user?.name || "User"} />
+                      <AvatarFallback className="rounded-lg">
+                        {user?.name?.substring(0, 2).toUpperCase() || "CN"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{user?.name || "User"}</span>
+                      <span className="truncate text-xs">{user?.email || ""}</span>
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <User2 className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )
 }
+```
