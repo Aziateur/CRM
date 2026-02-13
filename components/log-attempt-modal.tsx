@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { getSupabase } from "@/lib/supabase"
+import { useProjectId } from "@/hooks/use-project-id"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -34,6 +35,7 @@ interface LogAttemptModalProps {
 }
 
 export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: LogAttemptModalProps) {
+  const projectId = useProjectId()
   const [outcome, setOutcome] = useState<AttemptOutcome | null>(null)
   const [why, setWhy] = useState<WhyReason | null>(null)
   const [repMistake, setRepMistake] = useState<RepMistake | null>(null)
@@ -49,7 +51,7 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
   }
 
   const handleSave = async () => {
-    if (!lead || !outcome) return
+    if (!lead || !outcome || !projectId) return
 
     const attemptData = {
       lead_id: lead.id,
@@ -61,6 +63,7 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
       next_action: getDefaultNextAction(outcome, why || undefined),
       note: note || null,
       duration_sec: 0,
+      project_id: projectId,
     }
 
     const supabase = getSupabase()
@@ -102,6 +105,7 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
               title: taskDef.title,
               due_at: dueAt.toISOString(),
               priority: "normal",
+              project_id: projectId,
             }])
             .then(({ error: taskError }) => {
               if (taskError) console.warn("[auto-task] Skipped:", taskError.message)
@@ -139,9 +143,8 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
                     setOutcome(o)
                     setWhy(null)
                   }}
-                  className={`px-3 py-2 rounded-lg border text-left transition-colors ${
-                    outcome === o ? `${getOutcomeColor(o)} border-2` : "border-border hover:bg-muted"
-                  }`}
+                  className={`px-3 py-2 rounded-lg border text-left transition-colors ${outcome === o ? `${getOutcomeColor(o)} border-2` : "border-border hover:bg-muted"
+                    }`}
                 >
                   {o}
                 </button>
@@ -158,9 +161,8 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
                     key={w}
                     type="button"
                     onClick={() => setWhy(w)}
-                    className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
-                      why === w ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"
-                    }`}
+                    className={`px-3 py-2 rounded-lg border text-sm transition-colors ${why === w ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"
+                      }`}
                   >
                     {w}
                   </button>
@@ -178,9 +180,8 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
                     key={m}
                     type="button"
                     onClick={() => setRepMistake(repMistake === m ? null : m)}
-                    className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
-                      repMistake === m ? "border-red-500 bg-red-50 font-medium" : "border-border hover:bg-muted"
-                    }`}
+                    className={`px-3 py-2 rounded-lg border text-sm transition-colors ${repMistake === m ? "border-red-500 bg-red-50 font-medium" : "border-border hover:bg-muted"
+                      }`}
                   >
                     {m}
                   </button>

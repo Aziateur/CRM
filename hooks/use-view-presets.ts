@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 
 export interface ViewFilters {
   segment?: string
@@ -37,10 +38,12 @@ function mapPresetRow(row: Record<string, unknown>): ViewPreset {
 
 export function useViewPresets(entityType = "lead") {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [presets, setPresets] = useState<ViewPreset[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchPresets = useCallback(async () => {
+    if (!projectId) { setPresets([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
@@ -48,6 +51,7 @@ export function useViewPresets(entityType = "lead") {
         .from("view_presets")
         .select("*")
         .eq("entity_type", entityType)
+        .eq("project_id", projectId)
         .order("position", { ascending: true })
 
       if (error) {
@@ -66,7 +70,7 @@ export function useViewPresets(entityType = "lead") {
     } finally {
       setLoading(false)
     }
-  }, [entityType])
+  }, [entityType, projectId])
 
   useEffect(() => {
     fetchPresets()
@@ -77,6 +81,7 @@ export function useViewPresets(entityType = "lead") {
     filters: ViewFilters,
     viewMode: string
   ): Promise<ViewPreset | null> => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const nextPos = presets.length > 0 ? Math.max(...presets.map((p) => p.position)) + 1 : 0
@@ -88,6 +93,7 @@ export function useViewPresets(entityType = "lead") {
           filters,
           view_mode: viewMode,
           position: nextPos,
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -106,7 +112,7 @@ export function useViewPresets(entityType = "lead") {
     } catch {
       return null
     }
-  }, [entityType, presets, toast])
+  }, [entityType, presets, toast, projectId])
 
   const deletePreset = useCallback(async (id: string) => {
     try {

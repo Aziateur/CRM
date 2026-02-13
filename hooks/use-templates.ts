@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Template, TemplateCategory } from "@/lib/store"
 
 function mapTemplateRow(row: Record<string, unknown>): Template {
@@ -29,16 +30,19 @@ export { extractVariables }
 
 export function useTemplates(category?: TemplateCategory) {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchTemplates = useCallback(async () => {
+    if (!projectId) { setTemplates([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
       let query = supabase
         .from("templates")
         .select("*")
+        .eq("project_id", projectId)
         .order("position", { ascending: true })
 
       if (category) {
@@ -62,7 +66,7 @@ export function useTemplates(category?: TemplateCategory) {
     } finally {
       setLoading(false)
     }
-  }, [category])
+  }, [category, projectId])
 
   useEffect(() => {
     fetchTemplates()
@@ -74,6 +78,7 @@ export function useTemplates(category?: TemplateCategory) {
     subject?: string
     body: string
   }) => {
+    if (!projectId) return null
     try {
       const variables = extractVariables(input.body + (input.subject || ""))
       const supabase = getSupabase()
@@ -86,6 +91,7 @@ export function useTemplates(category?: TemplateCategory) {
           body: input.body,
           variables,
           position: templates.length,
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -103,7 +109,7 @@ export function useTemplates(category?: TemplateCategory) {
     } catch {
       return null
     }
-  }, [templates.length, toast])
+  }, [templates.length, toast, projectId])
 
   const updateTemplate = useCallback(async (id: string, input: {
     name?: string

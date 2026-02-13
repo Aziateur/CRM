@@ -25,6 +25,7 @@ import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Plus } from "lucide
 import { parseCSV, type ParsedCSV } from "@/lib/csv"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Lead, FieldDefinition } from "@/lib/store"
 
 // All real columns on the leads table
@@ -189,6 +190,7 @@ function ColumnMappingRow({
 
 export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>("upload")
   const [csv, setCSV] = useState<ParsedCSV | null>(null)
@@ -311,6 +313,7 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
           field_label: label,
           field_type: "text",
           position: fieldDefinitions.length + idx,
+          project_id: projectId,
         }))
 
       if (toCreate.length > 0) {
@@ -361,7 +364,7 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
         company = `Imported Lead #${rowIdx + 1}`
       }
 
-      const record: Record<string, unknown> = { company }
+      const record: Record<string, unknown> = { company, project_id: projectId }
       const customFields: Record<string, unknown> = {}
 
       for (const [colStr, resolved] of Object.entries(resolvedMapping)) {

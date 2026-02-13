@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { getSupabase } from "@/lib/supabase"
+import { useProjectId } from "@/hooks/use-project-id"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,16 +30,17 @@ interface AddLeadDialogProps {
 
 export function AddLeadDialog({ onLeadAdded }: AddLeadDialogProps) {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [open, setOpen] = useState(false)
   const [newLead, setNewLead] = useState({ company: "", phone: "", segment: "Unknown" })
 
   const handleAdd = async () => {
-    if (!newLead.company) return
+    if (!newLead.company || !projectId) return
 
     const supabase = getSupabase()
     const { data, error } = await supabase
       .from("leads")
-      .insert([{ company: newLead.company, phone: newLead.phone || null, segment: newLead.segment }])
+      .insert([{ company: newLead.company, phone: newLead.phone || null, segment: newLead.segment, project_id: projectId }])
       .select()
       .single()
 

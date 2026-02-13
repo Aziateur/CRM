@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Task, TaskType, TaskPriority } from "@/lib/store"
 
 function mapTaskRow(row: Record<string, unknown>): Task {
@@ -34,16 +35,19 @@ interface CreateTaskInput {
 
 export function useTasks(options?: { leadId?: string }) {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchTasks = useCallback(async () => {
+    if (!projectId) { setTasks([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
       let query = supabase
         .from("tasks")
         .select("*")
+        .eq("project_id", projectId)
         .is("completed_at", null)
         .order("due_at", { ascending: true })
 
@@ -54,7 +58,6 @@ export function useTasks(options?: { leadId?: string }) {
       const { data, error } = await query
 
       if (error) {
-        // Table may not exist yet — return empty silently
         if (error.code === "42P01" || error.message?.includes("does not exist")) {
           setTasks([])
           return
@@ -72,13 +75,14 @@ export function useTasks(options?: { leadId?: string }) {
     } finally {
       setLoading(false)
     }
-  }, [options?.leadId])
+  }, [options?.leadId, projectId])
 
   useEffect(() => {
     fetchTasks()
   }, [fetchTasks])
 
   const createTask = useCallback(async (input: CreateTaskInput): Promise<Task | null> => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
@@ -92,6 +96,7 @@ export function useTasks(options?: { leadId?: string }) {
           description: input.description ?? null,
           due_at: input.dueAt,
           priority: input.priority ?? "normal",
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -110,7 +115,7 @@ export function useTasks(options?: { leadId?: string }) {
     } catch {
       return null
     }
-  }, [])
+  }, [projectId])
 
   const completeTask = useCallback(async (taskId: string) => {
     try {

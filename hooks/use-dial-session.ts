@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
+import { useProjectId } from "@/hooks/use-project-id"
 import { getClientId } from "@/lib/client-id"
 
 export interface DialSession {
@@ -31,6 +32,7 @@ function mapSessionRow(row: Record<string, unknown>): DialSession {
 }
 
 export function useDialSession() {
+  const projectId = useProjectId()
   const [session, setSession] = useState<DialSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [hasActiveSession, setHasActiveSession] = useState(false)
@@ -38,6 +40,7 @@ export function useDialSession() {
   // Check for existing active session on mount
   useEffect(() => {
     const check = async () => {
+      if (!projectId) { setLoading(false); return }
       setLoading(true)
       try {
         const supabase = getSupabase()
@@ -46,13 +49,13 @@ export function useDialSession() {
           .from("dial_sessions")
           .select("*")
           .eq("client_id", clientId)
+          .eq("project_id", projectId)
           .eq("status", "active")
           .order("started_at", { ascending: false })
           .limit(1)
           .maybeSingle()
 
         if (error) {
-          // Table may not exist yet
           if (!error.message?.includes("does not exist")) {
             console.warn("[useDialSession]", error.message)
           }
@@ -73,9 +76,10 @@ export function useDialSession() {
       }
     }
     check()
-  }, [])
+  }, [projectId])
 
   const startSession = useCallback(async (target: number, experiment?: string): Promise<DialSession | null> => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const clientId = getClientId()
@@ -87,6 +91,7 @@ export function useDialSession() {
           experiment: experiment || null,
           status: "active",
           started_at: new Date().toISOString(),
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -106,10 +111,9 @@ export function useDialSession() {
     } catch {
       return null
     }
-  }, [])
+  }, [projectId])
 
   const resumeSession = useCallback(async (): Promise<DialSession | null> => {
-    // Just return the current session — caller decides where to jump in the queue
     return session
   }, [session])
 

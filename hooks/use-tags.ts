@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Tag } from "@/lib/store"
 
 function mapTagRow(row: Record<string, unknown>): Tag {
@@ -16,16 +17,19 @@ function mapTagRow(row: Record<string, unknown>): Tag {
 
 export function useTags() {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchTags = useCallback(async () => {
+    if (!projectId) { setTags([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
         .from("tags")
         .select("*")
+        .eq("project_id", projectId)
         .order("name", { ascending: true })
 
       if (error) {
@@ -43,18 +47,19 @@ export function useTags() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     fetchTags()
   }, [fetchTags])
 
   const createTag = useCallback(async (name: string, color: string = "#6b7280") => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
         .from("tags")
-        .insert([{ name: name.trim(), color }])
+        .insert([{ name: name.trim(), color, project_id: projectId }])
         .select()
         .single()
 
@@ -71,7 +76,7 @@ export function useTags() {
     } catch {
       return null
     }
-  }, [toast])
+  }, [toast, projectId])
 
   const updateTag = useCallback(async (id: string, changes: Partial<Pick<Tag, "name" | "color">>) => {
     try {

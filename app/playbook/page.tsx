@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
+import { useProjectId } from "@/hooks/use-project-id"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -53,40 +54,43 @@ import {
 export default function PlaybookPage() {
   const [rules, setRules] = useState<Rule[]>([])
   const [stopSignals, setStopSignals] = useState<StopSignal[]>([])
+  const projectId = useProjectId()
 
   useEffect(() => {
-    const fetchData = async () => {
-        const supabase = getSupabase()
-        const { data: rulesData } = await supabase.from('rules').select('*')
-        if (rulesData) {
-            setRules(rulesData.map((r: any) => ({
-                id: r.id,
-                ifWhen: r.if_when || r.ifWhen,
-                then: r.then_action || r.then, // Assuming snake_case 'then' might be reserved or something, but 'then' is likely fine.
-                because: r.because,
-                confidence: r.confidence,
-                evidenceAttemptIds: r.evidence_attempt_ids || [],
-                isActive: r.is_active,
-                createdAt: r.created_at
-            })))
-        }
+    if (!projectId) return
 
-        const { data: signalsData } = await supabase.from('stop_signals').select('*')
-        if (signalsData) {
-            setStopSignals(signalsData.map((s: any) => ({
-                id: s.id,
-                name: s.name,
-                description: s.description,
-                triggerCondition: s.trigger_condition || s.triggerCondition,
-                threshold: s.threshold,
-                windowSize: s.window_size || s.windowSize,
-                recommendedDrillId: s.recommended_drill_id || s.recommendedDrillId,
-                isActive: s.is_active
-            })))
-        }
+    const fetchData = async () => {
+      const supabase = getSupabase()
+      const { data: rulesData } = await supabase.from('rules').select('*').eq('project_id', projectId)
+      if (rulesData) {
+        setRules(rulesData.map((r: any) => ({
+          id: r.id,
+          ifWhen: r.if_when || r.ifWhen,
+          then: r.then_action || r.then,
+          because: r.because,
+          confidence: r.confidence,
+          evidenceAttemptIds: r.evidence_attempt_ids || [],
+          isActive: r.is_active,
+          createdAt: r.created_at
+        })))
+      }
+
+      const { data: signalsData } = await supabase.from('stop_signals').select('*').eq('project_id', projectId)
+      if (signalsData) {
+        setStopSignals(signalsData.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          triggerCondition: s.trigger_condition || s.triggerCondition,
+          threshold: s.threshold,
+          windowSize: s.window_size || s.windowSize,
+          recommendedDrillId: s.recommended_drill_id || s.recommendedDrillId,
+          isActive: s.is_active
+        })))
+      }
     }
     fetchData()
-  }, [])
+  }, [projectId])
 
 
   // Add Rule dialog
@@ -102,7 +106,7 @@ export default function PlaybookPage() {
   // Edit Rule dialog
   const [editingRule, setEditingRule] = useState<Rule | null>(null)
   const [isEditRuleOpen, setIsEditRuleOpen] = useState(false)
-  
+
   // Edit Stop Signal dialog
   const [editingSignal, setEditingSignal] = useState<StopSignal | null>(null)
   const [isEditSignalOpen, setIsEditSignalOpen] = useState(false)
@@ -128,28 +132,28 @@ export default function PlaybookPage() {
 
     const supabase = getSupabase()
     const { data, error } = await supabase.from('rules').insert([{
-        if_when: newRule.ifWhen,
-        then: newRule.then,
-        because: newRule.because,
-        confidence: newRule.confidence,
-        is_active: newRule.isActive
+      then: newRule.then,
+      because: newRule.because,
+      confidence: newRule.confidence,
+      is_active: newRule.isActive,
+      project_id: projectId,
     }]).select().single()
 
     if (data) {
-        const rule: Rule = {
-          id: data.id,
-          ifWhen: data.if_when,
-          then: data.then,
-          because: data.because,
-          confidence: data.confidence,
-          evidenceAttemptIds: [],
-          isActive: data.is_active,
-          createdAt: data.created_at,
-        }
+      const rule: Rule = {
+        id: data.id,
+        ifWhen: data.if_when,
+        then: data.then,
+        because: data.because,
+        confidence: data.confidence,
+        evidenceAttemptIds: [],
+        isActive: data.is_active,
+        createdAt: data.created_at,
+      }
 
-        setRules([rule, ...rules])
-        setNewRule({ ifWhen: "", then: "", because: "", confidence: "Low", isActive: false })
-        setIsAddRuleOpen(false)
+      setRules([rule, ...rules])
+      setNewRule({ ifWhen: "", then: "", because: "", confidence: "Low", isActive: false })
+      setIsAddRuleOpen(false)
     }
   }
 
@@ -163,10 +167,10 @@ export default function PlaybookPage() {
 
     const supabase = getSupabase()
     await supabase.from('rules').update({
-        if_when: editingRule.ifWhen,
-        then: editingRule.then,
-        because: editingRule.because,
-        confidence: editingRule.confidence
+      if_when: editingRule.ifWhen,
+      then: editingRule.then,
+      because: editingRule.because,
+      confidence: editingRule.confidence
     }).eq('id', editingRule.id)
 
     setRules(rules.map((r) => (r.id === editingRule.id ? editingRule : r)))
@@ -216,14 +220,14 @@ export default function PlaybookPage() {
 
   const handleSaveEditSignal = async () => {
     if (!editingSignal) return
-    
+
     const supabase = getSupabase()
     await supabase.from('stop_signals').update({
-        name: editingSignal.name,
-        description: editingSignal.description,
-        threshold: editingSignal.threshold,
-        window_size: editingSignal.windowSize,
-        recommended_drill_id: editingSignal.recommendedDrillId
+      name: editingSignal.name,
+      description: editingSignal.description,
+      threshold: editingSignal.threshold,
+      window_size: editingSignal.windowSize,
+      recommended_drill_id: editingSignal.recommendedDrillId
     }).eq('id', editingSignal.id)
 
     setStopSignals(stopSignals.map((s) => (s.id === editingSignal.id ? editingSignal : s)))
@@ -429,13 +433,12 @@ export default function PlaybookPage() {
                 {stopSignals.map((signal) => {
                   const drill = getDrillById(signal.recommendedDrillId)
                   return (
-                    <div 
-                      key={signal.id} 
-                      className={`p-4 border rounded-lg transition-colors ${
-                        signal.isActive 
-                          ? "bg-amber-50/50 border-amber-200" 
-                          : "bg-muted/30 border-muted"
-                      }`}
+                    <div
+                      key={signal.id}
+                      className={`p-4 border rounded-lg transition-colors ${signal.isActive
+                        ? "bg-amber-50/50 border-amber-200"
+                        : "bg-muted/30 border-muted"
+                        }`}
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
@@ -447,11 +450,11 @@ export default function PlaybookPage() {
                               {signal.isActive ? "Active" : "Disabled"}
                             </Badge>
                           </div>
-                          
+
                           <p className="text-sm text-muted-foreground mb-3">
                             {signal.description}
                           </p>
-                          
+
                           <div className="flex flex-wrap gap-4 text-sm">
                             <div className="flex items-center gap-2">
                               <Target className="h-4 w-4 text-amber-600" />
@@ -459,7 +462,7 @@ export default function PlaybookPage() {
                               <span className="font-medium">{signal.triggerCondition}</span>
                             </div>
                           </div>
-                          
+
                           {drill && (
                             <div className="mt-3 p-3 bg-background rounded border">
                               <div className="flex items-center gap-2 text-sm">
@@ -474,7 +477,7 @@ export default function PlaybookPage() {
                             </div>
                           )}
                         </div>
-                        
+
                         <div className="flex flex-col items-end gap-2">
                           <div className="flex items-center gap-2">
                             <Label htmlFor={`signal-${signal.id}`} className="text-xs text-muted-foreground">

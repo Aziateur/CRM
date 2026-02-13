@@ -61,6 +61,7 @@ import {
 import { useFramework } from "@/hooks/use-framework"
 import { setAttemptSignal, hasSignal } from "@/lib/signals"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 
 // Outcome colors for pills
 const outcomeStyles: Record<AttemptOutcome, string> = {
@@ -112,6 +113,7 @@ export default function DialSessionPage() {
   // Framework + signals
   const { activePhase, activeFocusLever, actionMarker, winMarker } = useFramework()
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [actionSignal, setActionSignal] = useState<boolean | null>(null)
   const [winSignal, setWinSignal] = useState<boolean | null>(null)
   const [consecutiveSkips, setConsecutiveSkips] = useState(0)
@@ -300,6 +302,7 @@ export default function DialSessionPage() {
       experiment_tag: selectedExperiment === "none" ? null : selectedExperiment,
       session_id: persistedSession?.id || null,
       duration_sec: callDuration,
+      project_id: projectId,
     }
 
     const supabase = getSupabase()
@@ -372,6 +375,7 @@ export default function DialSessionPage() {
               title: taskDef.title,
               due_at: dueAt.toISOString(),
               priority: "normal",
+              project_id: projectId,
             }])
             .then(({ error: taskError }) => {
               if (taskError) console.warn("[auto-task] Skipped:", taskError.message)

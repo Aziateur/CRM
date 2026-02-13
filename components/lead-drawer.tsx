@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import { useTasks } from "@/hooks/use-tasks"
 import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
@@ -120,6 +121,7 @@ export function LeadDrawer({
   onCall,
 }: LeadDrawerProps) {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const { stages } = usePipelineStages()
   const { fields: fieldDefinitions } = useFieldDefinitions("lead")
   const { tasks, completeTask } = useTasks({ leadId: lead?.id })
@@ -147,8 +149,8 @@ export function LeadDrawer({
 
   const leadAttempts = lead
     ? attempts
-        .filter((a) => a.leadId === lead.id)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .filter((a) => a.leadId === lead.id)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     : []
   const lastAttempt = leadAttempts[0] || null
 
@@ -235,7 +237,7 @@ export function LeadDrawer({
     const supabase = getSupabase()
     const { data, error } = await supabase
       .from("contacts")
-      .insert([{ lead_id: editedLead.id, name: newContact.name, phone: newContact.phone || null, role: newContact.role }])
+      .insert([{ lead_id: editedLead.id, name: newContact.name, phone: newContact.phone || null, role: newContact.role, project_id: projectId }])
       .select()
       .single()
 
@@ -461,8 +463,8 @@ export function LeadDrawer({
                       <ul className="space-y-1">
                         {(ed.confirmedFacts || []).length > 0
                           ? ed.confirmedFacts?.map((fact, i) => (
-                              <li key={i} className="text-sm flex items-start gap-2"><span className="text-muted-foreground">•</span><span>{fact}</span></li>
-                            ))
+                            <li key={i} className="text-sm flex items-start gap-2"><span className="text-muted-foreground">•</span><span>{fact}</span></li>
+                          ))
                           : <li className="text-sm text-muted-foreground italic">No confirmed facts yet</li>}
                       </ul>
                     )}
@@ -495,8 +497,8 @@ export function LeadDrawer({
                       <ul className="space-y-1">
                         {(ed.openQuestions || []).length > 0
                           ? ed.openQuestions?.map((q, i) => (
-                              <li key={i} className="text-sm flex items-start gap-2"><span className="text-muted-foreground">•</span><span>{q}</span></li>
-                            ))
+                            <li key={i} className="text-sm flex items-start gap-2"><span className="text-muted-foreground">•</span><span>{q}</span></li>
+                          ))
                           : <li className="text-sm text-muted-foreground italic">No open questions yet</li>}
                       </ul>
                     )}

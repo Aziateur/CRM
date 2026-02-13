@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Workflow, WorkflowTriggerType, WorkflowActionType } from "@/lib/store"
 
 function mapWorkflowRow(row: Record<string, unknown>): Workflow {
@@ -23,16 +24,19 @@ function mapWorkflowRow(row: Record<string, unknown>): Workflow {
 
 export function useWorkflows() {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchWorkflows = useCallback(async () => {
+    if (!projectId) { setWorkflows([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
         .from("workflows")
         .select("*")
+        .eq("project_id", projectId)
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -50,7 +54,7 @@ export function useWorkflows() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     fetchWorkflows()
@@ -64,6 +68,7 @@ export function useWorkflows() {
     actionType: WorkflowActionType
     actionConfig: Record<string, unknown>
   }) => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
@@ -75,6 +80,7 @@ export function useWorkflows() {
           trigger_config: input.triggerConfig,
           action_type: input.actionType,
           action_config: input.actionConfig,
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -92,7 +98,7 @@ export function useWorkflows() {
     } catch {
       return null
     }
-  }, [toast])
+  }, [toast, projectId])
 
   const updateWorkflow = useCallback(async (id: string, input: Partial<{
     name: string

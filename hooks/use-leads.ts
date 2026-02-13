@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Lead, Contact } from "@/lib/store"
 
 export function mapLeadRow(l: Record<string, unknown>): Lead {
@@ -49,18 +50,20 @@ interface UseLeadsOptions {
 export function useLeads(options: UseLeadsOptions = {}) {
   const { withContacts = false } = options
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchLeads = useCallback(async () => {
+    if (!projectId) { setLeads([]); setLoading(false); return }
     setLoading(true)
     setError(null)
     try {
       const supabase = getSupabase()
-      const query = withContacts
-        ? supabase.from("leads").select("*, contacts(*)").order("created_at", { ascending: false })
-        : supabase.from("leads").select("*").order("created_at", { ascending: false })
+      let query = withContacts
+        ? supabase.from("leads").select("*, contacts(*)").eq("project_id", projectId).order("created_at", { ascending: false })
+        : supabase.from("leads").select("*").eq("project_id", projectId).order("created_at", { ascending: false })
 
       const { data, error: fetchError } = await query
 
@@ -79,11 +82,11 @@ export function useLeads(options: UseLeadsOptions = {}) {
     } finally {
       setLoading(false)
     }
-  }, [withContacts, toast])
+  }, [withContacts, toast, projectId])
 
   useEffect(() => {
     fetchLeads()
   }, [fetchLeads])
 
-  return { leads, setLeads, loading, error, refetch: fetchLeads }
+  return { leads, setLeads, loading, error, refetch: fetchLeads, projectId }
 }

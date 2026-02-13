@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import { Topbar } from "@/components/topbar"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
@@ -48,6 +49,7 @@ type ViewMode = "table" | "kanban"
 
 export default function LeadsPage() {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const { leads, setLeads, loading: leadsLoading } = useLeads()
   const { attempts, setAttempts, loading: attemptsLoading } = useAttempts()
   const { stages } = usePipelineStages()
@@ -132,11 +134,11 @@ export default function LeadsPage() {
       const supabase = getSupabase()
       try {
         const { data: attempt, error } = await supabase.from("attempts").insert([{
-          lead_id: selectedLead.id, timestamp: new Date().toISOString(), outcome: "No connect", dm_reached: false, next_action: "Call again", duration_sec: 0,
+          lead_id: selectedLead.id, timestamp: new Date().toISOString(), outcome: "No connect", dm_reached: false, next_action: "Call again", duration_sec: 0, project_id: projectId,
         }]).select().single()
         if (!error && attempt) {
           await supabase.from("call_sessions").insert([{
-            attempt_id: attempt.id, lead_id: selectedLead.id, phone_e164: phone, direction: "outgoing", status: "initiated", started_at: new Date().toISOString(),
+            attempt_id: attempt.id, lead_id: selectedLead.id, phone_e164: phone, direction: "outgoing", status: "initiated", started_at: new Date().toISOString(), project_id: projectId,
           }])
         }
       } catch (e) { console.error("Call logging error:", e) }

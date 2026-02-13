@@ -58,7 +58,6 @@ export function useLeadActivities(leadId: string | null) {
         .limit(50)
 
       if (error) {
-        // Table may not exist yet — fail silently
         if (!error.message?.includes("does not exist")) {
           console.warn("[useLeadActivities]", error.message)
         }

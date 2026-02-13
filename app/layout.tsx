@@ -1,14 +1,12 @@
 import type React from "react"
 import type { Metadata } from "next"
 import "./globals.css"
-import { SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
+import { AuthGate } from "@/components/auth-gate"
 import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
-  title: "Sales CRM - Dashboard",
-  description: "Modern Sales CRM Interface",
-    generator: 'v0.app'
+  title: "Dalio CRM - Sales Pipeline",
+  description: "Modern Sales CRM with multi-project support",
 }
 
 export default function RootLayout({
@@ -19,12 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-sans">
-        <SidebarProvider>
-          <div className="flex min-h-screen w-full">
-            <AppSidebar />
-            <main className="flex-1 overflow-auto">{children}</main>
-          </div>
-        </SidebarProvider>
+        <AuthGate>{children}</AuthGate>
         <Toaster />
       </body>
     </html>

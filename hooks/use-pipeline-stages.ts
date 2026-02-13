@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import { type PipelineStage, DEFAULT_PIPELINE_STAGES } from "@/lib/store"
 
 function mapStageRow(row: Record<string, unknown>): PipelineStage {
@@ -35,16 +36,19 @@ interface UpdateStageInput {
 
 export function usePipelineStages() {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [stages, setStages] = useState<PipelineStage[]>(DEFAULT_PIPELINE_STAGES)
   const [loading, setLoading] = useState(true)
 
   const fetchStages = useCallback(async () => {
+    if (!projectId) { setStages(DEFAULT_PIPELINE_STAGES); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
         .from("pipeline_stages")
         .select("*")
+        .eq("project_id", projectId)
         .order("position", { ascending: true })
 
       if (error) {
@@ -61,13 +65,14 @@ export function usePipelineStages() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     fetchStages()
   }, [fetchStages])
 
   const createStage = useCallback(async (input: CreateStageInput): Promise<PipelineStage | null> => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const nextPosition = stages.length > 0 ? Math.max(...stages.map((s) => s.position)) + 1 : 0
@@ -80,6 +85,7 @@ export function usePipelineStages() {
           default_probability: input.defaultProbability ?? 0,
           is_won: input.isWon ?? false,
           is_lost: input.isLost ?? false,
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -98,7 +104,7 @@ export function usePipelineStages() {
     } catch {
       return null
     }
-  }, [stages, toast])
+  }, [stages, toast, projectId])
 
   const updateStage = useCallback(async (id: string, changes: UpdateStageInput) => {
     try {
@@ -124,13 +130,13 @@ export function usePipelineStages() {
         prev.map((s) =>
           s.id === id
             ? {
-                ...s,
-                ...(changes.name !== undefined && { name: changes.name }),
-                ...(changes.color !== undefined && { color: changes.color }),
-                ...(changes.defaultProbability !== undefined && { defaultProbability: changes.defaultProbability }),
-                ...(changes.isWon !== undefined && { isWon: changes.isWon }),
-                ...(changes.isLost !== undefined && { isLost: changes.isLost }),
-              }
+              ...s,
+              ...(changes.name !== undefined && { name: changes.name }),
+              ...(changes.color !== undefined && { color: changes.color }),
+              ...(changes.defaultProbability !== undefined && { defaultProbability: changes.defaultProbability }),
+              ...(changes.isWon !== undefined && { isWon: changes.isWon }),
+              ...(changes.isLost !== undefined && { isLost: changes.isLost }),
+            }
             : s
         )
       )

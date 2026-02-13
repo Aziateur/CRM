@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Sequence, SequenceStep, SequenceEnrollment, SequenceStepType, SequenceEnrollmentStatus } from "@/lib/store"
 
 function mapSequenceRow(row: Record<string, unknown>): Sequence {
@@ -45,16 +46,19 @@ function mapEnrollmentRow(row: Record<string, unknown>): SequenceEnrollment {
 
 export function useSequences() {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [sequences, setSequences] = useState<Sequence[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchSequences = useCallback(async () => {
+    if (!projectId) { setSequences([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
         .from("sequences")
         .select("*")
+        .eq("project_id", projectId)
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -72,18 +76,19 @@ export function useSequences() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     fetchSequences()
   }, [fetchSequences])
 
   const createSequence = useCallback(async (input: { name: string; description?: string }) => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const { data, error } = await supabase
         .from("sequences")
-        .insert([{ name: input.name.trim(), description: input.description?.trim() || null }])
+        .insert([{ name: input.name.trim(), description: input.description?.trim() || null, project_id: projectId }])
         .select()
         .single()
 
@@ -100,7 +105,7 @@ export function useSequences() {
     } catch {
       return null
     }
-  }, [toast])
+  }, [toast, projectId])
 
   const updateSequence = useCallback(async (id: string, input: Partial<{ name: string; description: string; isActive: boolean }>) => {
     try {

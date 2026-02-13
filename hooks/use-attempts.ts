@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { Attempt } from "@/lib/store"
 
 export function mapAttemptRow(a: Record<string, unknown>): Attempt {
@@ -31,23 +32,40 @@ export function mapAttemptRow(a: Record<string, unknown>): Attempt {
 
 export function useAttempts() {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [attempts, setAttempts] = useState<Attempt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchAttempts = useCallback(async () => {
+    if (!projectId) { setAttempts([]); setLoading(false); return }
     setLoading(true)
     setError(null)
     try {
       const supabase = getSupabase()
+      // Try the enriched view first, fall back to attempts table
       const { data, error: fetchError } = await supabase
         .from("v_attempts_enriched")
         .select("*")
+        .eq("project_id", projectId)
         .order("created_at", { ascending: false })
 
       if (fetchError) {
-        setError(fetchError.message)
-        toast({ variant: "destructive", title: "Failed to load attempts", description: fetchError.message })
+        // View might not have project_id yet, try base table
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("attempts")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("created_at", { ascending: false })
+
+        if (fallbackError) {
+          setError(fallbackError.message)
+          toast({ variant: "destructive", title: "Failed to load attempts", description: fallbackError.message })
+          return
+        }
+        if (fallbackData) {
+          setAttempts(fallbackData.map((row: Record<string, unknown>) => mapAttemptRow(row)))
+        }
         return
       }
 
@@ -60,11 +78,11 @@ export function useAttempts() {
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [toast, projectId])
 
   useEffect(() => {
     fetchAttempts()
   }, [fetchAttempts])
 
-  return { attempts, setAttempts, loading, error, refetch: fetchAttempts }
+  return { attempts, setAttempts, loading, error, refetch: fetchAttempts, projectId }
 }

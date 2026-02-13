@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
+import { useProjectId } from "@/hooks/use-project-id"
 import type { FieldDefinition, FieldType } from "@/lib/store"
 
 function mapFieldRow(row: Record<string, unknown>): FieldDefinition {
@@ -29,10 +30,12 @@ interface CreateFieldInput {
 
 export function useFieldDefinitions(entityType = "lead") {
   const { toast } = useToast()
+  const projectId = useProjectId()
   const [fields, setFields] = useState<FieldDefinition[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchFields = useCallback(async () => {
+    if (!projectId) { setFields([]); setLoading(false); return }
     setLoading(true)
     try {
       const supabase = getSupabase()
@@ -40,6 +43,7 @@ export function useFieldDefinitions(entityType = "lead") {
         .from("field_definitions")
         .select("*")
         .eq("entity_type", entityType)
+        .eq("project_id", projectId)
         .order("position", { ascending: true })
 
       if (error) {
@@ -60,13 +64,14 @@ export function useFieldDefinitions(entityType = "lead") {
     } finally {
       setLoading(false)
     }
-  }, [entityType])
+  }, [entityType, projectId])
 
   useEffect(() => {
     fetchFields()
   }, [fetchFields])
 
   const createField = useCallback(async (input: CreateFieldInput): Promise<FieldDefinition | null> => {
+    if (!projectId) return null
     try {
       const supabase = getSupabase()
       const nextPosition = fields.length > 0 ? Math.max(...fields.map((f) => f.position)) + 1 : 0
@@ -80,6 +85,7 @@ export function useFieldDefinitions(entityType = "lead") {
           options: input.options ?? null,
           is_required: input.isRequired ?? false,
           position: nextPosition,
+          project_id: projectId,
         }])
         .select()
         .single()
@@ -98,7 +104,7 @@ export function useFieldDefinitions(entityType = "lead") {
     } catch {
       return null
     }
-  }, [entityType, fields, toast])
+  }, [entityType, fields, toast, projectId])
 
   const updateField = useCallback(async (id: string, changes: Partial<CreateFieldInput>) => {
     try {
@@ -123,12 +129,12 @@ export function useFieldDefinitions(entityType = "lead") {
         prev.map((f) =>
           f.id === id
             ? {
-                ...f,
-                ...(changes.fieldLabel !== undefined && { fieldLabel: changes.fieldLabel }),
-                ...(changes.fieldType !== undefined && { fieldType: changes.fieldType }),
-                ...(changes.options !== undefined && { options: changes.options }),
-                ...(changes.isRequired !== undefined && { isRequired: changes.isRequired }),
-              }
+              ...f,
+              ...(changes.fieldLabel !== undefined && { fieldLabel: changes.fieldLabel }),
+              ...(changes.fieldType !== undefined && { fieldType: changes.fieldType }),
+              ...(changes.options !== undefined && { options: changes.options }),
+              ...(changes.isRequired !== undefined && { isRequired: changes.isRequired }),
+            }
             : f
         )
       )
