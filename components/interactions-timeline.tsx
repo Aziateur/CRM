@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import {
     Phone, MessageSquare, ChevronRight, Edit3, Clock, Check, Send,
     Mic, FileText, Tag as TagIcon, ArrowRight,
+    PhoneIncoming, PhoneOutgoing, Play,
 } from "lucide-react"
 import type { Attempt, AttemptOutcome } from "@/lib/store"
 import { getOutcomeColor } from "@/components/leads-table"
@@ -17,7 +18,7 @@ import { getOutcomeColor } from "@/components/leads-table"
 // Types
 // ============================================================================
 
-type ActivityType = "call" | "email" | "sms" | "note" | "stage_change" | "tag_change" | "field_change" | "task_created" | "task_completed"
+type ActivityType = "call" | "call_session" | "email" | "sms" | "note" | "stage_change" | "tag_change" | "field_change" | "task_created" | "task_completed"
 
 interface Activity {
     id: string
@@ -40,9 +41,13 @@ interface InteractionsTimelineProps {
 // Activity icon + color mapping
 // ============================================================================
 
-function ActivityIcon({ type }: { type: ActivityType }) {
+function ActivityIcon({ type, direction }: { type: ActivityType, direction?: string }) {
     switch (type) {
         case "call": return <Phone className="h-3.5 w-3.5 text-green-500" />
+        case "call_session":
+            return direction === "inbound"
+                ? <PhoneIncoming className="h-3.5 w-3.5 text-blue-500" />
+                : <PhoneOutgoing className="h-3.5 w-3.5 text-green-500" />
         case "note": return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
         case "stage_change": return <ArrowRight className="h-3.5 w-3.5 text-amber-500" />
         case "tag_change": return <TagIcon className="h-3.5 w-3.5 text-indigo-500" />
@@ -177,8 +182,12 @@ export function InteractionsTimeline({ leadId, attempts, onViewAttempt, onAddNot
                     <div className="space-y-1">
                         {activities.map((activity) => {
                             const isCall = activity.activityType === "call"
+                            const isCallSession = activity.activityType === "call_session"
                             const attempt = isCall ? findAttemptForActivity(activity) : null
                             const outcome = activity.metadata?.outcome as AttemptOutcome | undefined
+                            const direction = activity.metadata?.direction as string | undefined
+                            const recordingUrl = activity.metadata?.recording_url as string | undefined
+                            const duration = activity.metadata?.duration as number | undefined
 
                             return (
                                 <div
@@ -187,11 +196,11 @@ export function InteractionsTimeline({ leadId, attempts, onViewAttempt, onAddNot
                                     onClick={isCall && attempt ? () => onViewAttempt(attempt) : undefined}
                                 >
                                     <div className="shrink-0 mt-0.5">
-                                        <ActivityIcon type={activity.activityType} />
+                                        <ActivityIcon type={activity.activityType} direction={direction} />
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            {/* For calls: show outcome badge inline */}
+                                            {/* For calls (Attempts): show outcome badge inline */}
                                             {isCall && outcome ? (
                                                 <>
                                                     <Badge className={getOutcomeColor(outcome)} variant="secondary">{outcome}</Badge>
@@ -201,6 +210,23 @@ export function InteractionsTimeline({ leadId, attempts, onViewAttempt, onAddNot
                                                     {attempt?.recordingUrl && <Mic className="h-3 w-3 text-muted-foreground" />}
                                                     {(attempt?.transcript?.length || attempt?.callTranscriptText) && <FileText className="h-3 w-3 text-muted-foreground" />}
                                                 </>
+                                            ) : isCallSession ? (
+                                                // For raw call sessions (unlinked)
+                                                <div className="flex flex-col gap-1 w-full">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium">{activity.title}</span>
+                                                        {duration && <span className="text-xs text-muted-foreground">({Math.floor(duration / 60)}m {duration % 60}s)</span>}
+                                                    </div>
+                                                    {recordingUrl && (
+                                                        <audio controls src={recordingUrl} className="h-6 w-full max-w-[200px]" />
+                                                    )}
+                                                    {activity.description && (
+                                                        <details className="text-xs text-muted-foreground">
+                                                            <summary className="cursor-pointer hover:underline">Show transcript</summary>
+                                                            <p className="mt-1 whitespace-pre-wrap pl-2 border-l-2">{activity.description}</p>
+                                                        </details>
+                                                    )}
+                                                </div>
                                             ) : (
                                                 <p className="text-sm">{activity.description || activity.title}</p>
                                             )}
@@ -209,7 +235,8 @@ export function InteractionsTimeline({ leadId, attempts, onViewAttempt, onAddNot
                                         {isCall && activity.description && (
                                             <p className="text-xs text-muted-foreground italic mt-0.5">{activity.description}</p>
                                         )}
-                                        <p className="text-xs text-muted-foreground">{timeSince(activity.createdAt)}</p>
+                                        {!isCallSession && <p className="text-xs text-muted-foreground">{timeSince(activity.createdAt)}</p>}
+                                        {isCallSession && <p className="text-xs text-muted-foreground mt-1">{timeSince(activity.createdAt)}</p>}
                                     </div>
                                     {isCall && attempt && (
                                         <div className="shrink-0 self-center">
