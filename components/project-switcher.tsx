@@ -20,15 +20,18 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import { Check, ChevronsUpDown, FolderPlus, Loader2 } from "lucide-react"
+import { Check, ChevronsUpDown, FolderPlus, Loader2, Trash2 } from "lucide-react"
 
 export function ProjectSwitcher() {
-    const { projects, currentProjectId, switchProject, createProject } = useAuth()
+    const { projects, currentProjectId, switchProject, createProject, deleteProject } = useAuth()
     const [showNew, setShowNew] = useState(false)
     const [newName, setNewName] = useState("")
     const [newDesc, setNewDesc] = useState("")
     const [creating, setCreating] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
+    const [deleting, setDeleting] = useState(false)
 
     const current = projects.find((p) => p.id === currentProjectId)
 
@@ -47,6 +50,21 @@ export function ProjectSwitcher() {
             setError(result.error || "Failed to create project")
         }
         setCreating(false)
+    }
+
+    const handleDeleteClick = (projectId: string, e: React.MouseEvent) => {
+        e.stopPropagation()
+        setProjectToDelete(projectId)
+        setDeleteDialogOpen(true)
+    }
+
+    const handleDeleteConfirm = async () => {
+        if (!projectToDelete) return
+        setDeleting(true)
+        await deleteProject(projectToDelete)
+        setDeleting(false)
+        setDeleteDialogOpen(false)
+        setProjectToDelete(null)
     }
 
     return (
@@ -69,9 +87,19 @@ export function ProjectSwitcher() {
                             className="flex items-center gap-2"
                         >
                             <span className="flex-1 truncate">{p.name}</span>
-                            {p.id === currentProjectId && (
-                                <Check className="h-4 w-4 text-primary shrink-0" />
-                            )}
+                            <div className="flex items-center gap-1 shrink-0">
+                                {p.id === currentProjectId && (
+                                    <Check className="h-4 w-4 text-primary" />
+                                )}
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={(e) => handleDeleteClick(p.id, e)}
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
                         </DropdownMenuItem>
                     ))}
                     <DropdownMenuSeparator />
@@ -133,6 +161,42 @@ export function ProjectSwitcher() {
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Delete Project</DialogTitle>
+                        <DialogDescription>
+                            Are you sure? This cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setDeleteDialogOpen(false)}
+                            disabled={deleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={handleDeleteConfirm}
+                            disabled={deleting}
+                        >
+                            {deleting ? (
+                                <span className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Deleting…
+                                </span>
+                            ) : (
+                                "Delete Project"
+                            )}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </>

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
-import { getSupabase } from "@/lib/supabase"
+import { getSupabase, resetSupabaseClient } from "@/lib/supabase"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +34,7 @@ interface AuthContextValue extends AuthState {
     logout: () => void
     switchProject: (projectId: string) => void
     createProject: (name: string, description?: string) => Promise<{ success: boolean; error?: string; projectId?: string }>
+    deleteProject: (id: string) => Promise<{ success: boolean; error?: string }>
     isAuthenticated: boolean
 }
 
@@ -44,6 +45,7 @@ interface AuthContextValue extends AuthState {
 const STORAGE_KEY_USER = "dalio_crm_user"
 const STORAGE_KEY_PROJECTS = "dalio_crm_projects"
 const STORAGE_KEY_PROJECT_ID = "dalio_crm_current_project"
+const STORAGE_KEY_TOKEN = "dalio_session_token"
 
 // ---------------------------------------------------------------------------
 // Context
@@ -91,11 +93,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [])
 
     // Persist to localStorage whenever auth state changes
-    const persist = useCallback((user: AuthUser, projects: UserProject[], projectId: string | null) => {
+    const persist = useCallback((user: AuthUser, projects: UserProject[], projectId: string | null, token?: string) => {
         localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user))
         localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects))
         if (projectId) {
             localStorage.setItem(STORAGE_KEY_PROJECT_ID, projectId)
+        }
+        if (token) {
+            localStorage.setItem(STORAGE_KEY_TOKEN, token)
+            resetSupabaseClient()
         }
     }, [])
 
@@ -114,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { success: false, error: error.message }
             }
 
-            const result = data as { success: boolean; error?: string; user?: AuthUser; projects?: UserProject[] }
+            const result = data as { success: boolean; error?: string; token?: string; user?: AuthUser; projects?: UserProject[] }
             if (!result.success) {
                 return { success: false, error: result.error || "Invalid credentials" }
             }
@@ -122,8 +128,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const user = result.user!
             const projects = result.projects || []
             const currentProjectId = projects.length > 0 ? projects[0].id : null
+            const token = result.token
 
-            persist(user, projects, currentProjectId)
+            if (token) {
+                persist(user, projects, currentProjectId, token)
+            } else {
+                persist(user, projects, currentProjectId)
+            }
+
             setState({ user, projects, currentProjectId, loading: false })
 
             return { success: true }
@@ -148,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 return { success: false, error: error.message }
             }
 
-            const result = data as { success: boolean; error?: string; user?: AuthUser; project?: { id: string; name: string } }
+            const result = data as { success: boolean; error?: string; token?: string; user?: AuthUser; project?: { id: string; name: string } }
             if (!result.success) {
                 return { success: false, error: result.error || "Registration failed" }
             }
@@ -160,8 +172,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 role: "owner",
                 createdAt: new Date().toISOString(),
             }
+            const token = result.token
 
-            persist(user, [project], project.id)
+            if (token) {
+                persist(user, [project], project.id, token)
+            } else {
+                persist(user, [project], project.id)
+            }
+
             setState({ user, projects: [project], currentProjectId: project.id, loading: false })
 
             return { success: true }
@@ -177,6 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(STORAGE_KEY_USER)
         localStorage.removeItem(STORAGE_KEY_PROJECTS)
         localStorage.removeItem(STORAGE_KEY_PROJECT_ID)
+        localStorage.removeItem(STORAGE_KEY_TOKEN)
+        resetSupabaseClient()
         setState({ user: null, projects: [], currentProjectId: null, loading: false })
     }, [])
 
@@ -220,6 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             const updatedProjects = [...state.projects, newProject]
+            // We don't change token on create project
             persist(state.user, updatedProjects, newProject.id)
             setState((prev) => ({
                 ...prev,
@@ -234,6 +255,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [state.user, state.projects, persist])
 
     // ---------------------------------------------------------------------------
+    // Delete Project
+    // ---------------------------------------------------------------------------
+    const deleteProject = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
+        if (!state.user) return { success: false, error: "Not authenticated" }
+
+        try {
+            const supabase = getSupabase()
+            const { error } = await supabase
+                .from("projects")
+                .delete()
+                .eq("id", id)
+
+            if (error) {
+                return { success: false, error: error.message }
+            }
+
+            // Remove project from local state
+            const updatedProjects = state.projects.filter((p) => p.id !== id)
+
+            // If the deleted project was the current one, switch to another project or null
+            let newCurrentProjectId = state.currentProjectId
+            if (state.currentProjectId === id) {
+                newCurrentProjectId = updatedProjects.length > 0 ? updatedProjects[0].id : null
+            }
+
+            persist(state.user, updatedProjects, newCurrentProjectId)
+            setState((prev) => ({
+                ...prev,
+                projects: updatedProjects,
+                currentProjectId: newCurrentProjectId,
+            }))
+
+            return { success: true }
+        } catch (e) {
+            return { success: false, error: e instanceof Error ? e.message : "Failed to delete project" }
+        }
+    }, [state.user, state.projects, state.currentProjectId, persist])
+
+    // ---------------------------------------------------------------------------
     // Render
     // ---------------------------------------------------------------------------
     const value: AuthContextValue = {
@@ -243,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         switchProject,
         createProject,
+        deleteProject,
         isAuthenticated: !!state.user,
     }
 

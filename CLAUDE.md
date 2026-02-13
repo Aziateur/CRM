@@ -32,7 +32,8 @@ Expected output: [what to bring back]
 - Do NOT use `getServerSideProps`, `getStaticProps`, server actions, or API routes — this is a static export SPA. There is no Node.js server at runtime. Everything runs client-side.
 - Do NOT use `next/headers`, `next/cookies`, or any server-only imports — static export means no request/response cycle on the server.
 - Do NOT create `app/api/` route handlers — there is no server to run them. External calls go through Supabase client SDK or n8n webhooks.
-- Do NOT use Supabase Auth — there is no auth system in this project currently. Don't add auth middleware, session checks, or RLS policies based on auth.
+- Do NOT use Supabase Auth — we use **Custom Auth** via `lib/auth-context.tsx` and `sessions` table. Do not use `supabase.auth.signUp/signIn`.
+- RLS is **ENABLED** on all tables. All queries must be scoped to `project_id`. use `useProjectId()` hook or pass `project_id` explicitly.
 - Do NOT use `createServerClient()` from `@supabase/ssr` — no server. Use `createClient()` from `@supabase/supabase-js` directly (browser client).
 - Do NOT add `middleware.ts` — static exports don't support Next.js middleware.
 - Do NOT use `revalidatePath`, `revalidateTag`, or ISR — no server-side rendering or caching.
@@ -73,7 +74,8 @@ Expected output: [what to bring back]
 - **Language**: PostgreSQL (via Supabase)
 - Migrations go in `supabase/migrations/` with timestamp prefix
 - After schema changes, regenerate types: `npx supabase gen types typescript --project-id <ID> > src/types/database.types.ts`
-- No RLS policies tied to auth (no auth). If RLS is enabled on a table, it uses anon key permissions.
+- **RLS ENABLED**: All tables satisfy RLS. Policies rely on `x-session-token` header and `user_projects` membership.
+- **Custom Auth**: `users`, `projects`, `sessions` tables manage auth. `lib/supabase.ts` injects session token.
 - Triggers and views are defined in migration SQL files
 
 ## n8n Workflows

@@ -32,6 +32,11 @@ const menuItems = [
     icon: LayoutDashboard,
   },
   {
+    title: "Analytics",
+    url: "/analytics",
+    icon: BarChart3,
+  },
+  {
     title: "Dial Session",
     url: "/dial-session",
     icon: Phone,

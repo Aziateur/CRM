@@ -20,7 +20,7 @@ RETURNS UUID
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_token_str TEXT;
@@ -54,7 +54,7 @@ CREATE OR REPLACE FUNCTION authenticate(p_email TEXT, p_password TEXT)
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user RECORD;
@@ -109,7 +109,7 @@ CREATE OR REPLACE FUNCTION register_user(p_email TEXT, p_password TEXT, p_name T
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_user_id UUID;
