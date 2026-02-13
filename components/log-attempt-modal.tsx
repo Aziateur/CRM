@@ -90,6 +90,32 @@ export function LogAttemptModal({ open, onOpenChange, lead, onAttemptLogged }: L
       }
       onAttemptLogged(attempt)
 
+      // Fire-and-forget: link the most recent unlinked call_session to this attempt
+      // (so recording_url + transcript_text appear in the attempt detail modal)
+      if (lead) {
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        supabase
+          .from("call_sessions")
+          .select("id")
+          .eq("lead_id", lead.id)
+          .is("attempt_id", null)
+          .gte("created_at", thirtyMinAgo)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single()
+          .then(({ data: cs }) => {
+            if (cs) {
+              supabase
+                .from("call_sessions")
+                .update({ attempt_id: data.id })
+                .eq("id", cs.id)
+                .then(({ error: linkErr }) => {
+                  if (linkErr) console.warn("[call-link] Skipped:", linkErr.message)
+                })
+            }
+          })
+      }
+
       // Fire-and-forget: auto-create follow-up task based on outcome
       if (lead) {
         const taskDef = getDefaultTaskForOutcome(outcome, why || undefined, lead.company)
