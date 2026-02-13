@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   LayoutDashboard,
+  Users,
   BookOpen,
   Phone,
   Repeat,
@@ -46,6 +47,11 @@ export function AppSidebar() {
   const pathname = usePathname()
 
   const menuItems = [
+    {
+      title: "Leads",
+      url: "/",
+      icon: Users,
+    },
     {
       title: "Dashboard",
       url: "/dashboard",
