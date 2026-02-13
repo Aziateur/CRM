@@ -1,4 +1,3 @@
-```tsx
 "use client"
 
 import * as React from "react"
@@ -43,7 +42,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 export function AppSidebar() {
-  const { user, signOut } = useAuth()
+  const { user, logout } = useAuth()
   const pathname = usePathname()
 
   const menuItems = [
@@ -96,7 +95,7 @@ export function AppSidebar() {
                     isActive={pathname === item.url}
                   >
                     <Link href={item.url}>
-                      <item.icon />
+                      <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
@@ -162,7 +161,7 @@ export function AppSidebar() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={signOut}>
+                <DropdownMenuItem onClick={logout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Log out
                 </DropdownMenuItem>
@@ -174,4 +173,3 @@ export function AppSidebar() {
     </Sidebar>
   )
 }
-```
