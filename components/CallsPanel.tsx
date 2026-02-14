@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { ChevronDown, ChevronRight, Phone, FileText, Play } from "lucide-react"
+import { ChevronDown, ChevronRight, Phone, Play } from "lucide-react"
 
 interface CallArtifact {
   id: string
@@ -39,20 +39,10 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (leadId) {
-        // Try filtering by lead_id first if available in the view
-        // Note: We might need to adjust if the view doesn't expose lead_id directly or if we rely on phone
-        // For now, let's assume we filter by phone if lead_id isn't guaranteed to be in the view or if we want to catch all calls for that number
-        // Actually, the linkage is attempt -> call_session. If the view joins attempts, we could use lead_id.
-        // But the prompt says "filtered by: lead_id if call_sessions.lead_id exists... otherwise by phone_e164"
-        // Let's try phone first as it's safer for OpenPhone matching
-        if (phone) {
-             query = query.eq('phone_e164', phone) // Assuming column name
-        } else {
-             query = query.eq('lead_id', leadId)
-        }
-      } else if (phone) {
+      if (phone) {
         query = query.eq('phone_e164', phone)
+      } else if (leadId) {
+        query = query.eq('lead_id', leadId)
       }
 
       const { data, error } = await query
@@ -68,19 +58,15 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
     fetchCalls()
   }, [leadId, phone])
 
-  if (!process.env.NEXT_PUBLIC_SANDBOX_CALLS) {
-      return null
-  }
-
   if (loading) return <div className="p-4 text-sm text-muted-foreground">Loading calls...</div>
-  if (calls.length === 0) return <div className="p-4 text-sm text-muted-foreground">No calls recorded.</div>
+  if (calls.length === 0) return null
 
   return (
-    <Card className="mt-6 border-blue-200 bg-blue-50/20">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Phone className="h-4 w-4 text-blue-600" />
-          Call History (Sandbox)
+          <Phone className="h-4 w-4" />
+          Call Recordings
         </CardTitle>
       </CardHeader>
       <CardContent>
