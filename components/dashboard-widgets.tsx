@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Lead, Attempt, PipelineStage, Task } from "@/lib/store"
-import { Phone, Users, TrendingUp, Calendar, ClipboardList, Zap } from "lucide-react"
+import { Phone, Users, TrendingUp, Calendar } from "lucide-react"
 
 interface DashboardWidgetsProps {
   leads: Lead[]
@@ -93,95 +93,65 @@ function PipelineFunnel({
   )
 }
 
-export function DashboardWidgets({ leads, attempts, stages, tasks, sessionStartedAt }: DashboardWidgetsProps) {
+export function DashboardWidgets({ leads, attempts, stages }: DashboardWidgetsProps) {
   const metrics = useMemo(() => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const todayEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000)
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-    const todayAttempts = attempts.filter((a) => new Date(a.timestamp) >= today)
     const weekAttempts = attempts.filter((a) => new Date(a.timestamp) >= weekAgo)
-
-    const todayDM = todayAttempts.filter((a) => a.dmReached).length
-    const todayMeetings = todayAttempts.filter((a) => a.outcome === "Meeting set").length
+    const monthAttempts = attempts.filter((a) => new Date(a.timestamp) >= monthAgo)
 
     const weekConnects = weekAttempts.filter((a) => a.outcome !== "No connect").length
     const weekMeetings = weekAttempts.filter((a) => a.outcome === "Meeting set").length
+    const monthMeetings = monthAttempts.filter((a) => a.outcome === "Meeting set").length
 
     const connectRate = weekAttempts.length > 0
       ? Math.round((weekConnects / weekAttempts.length) * 100)
       : 0
 
-    // Task metrics
-    const pendingTasks = (tasks || []).filter((t) => !t.completedAt)
-    const overdueTasks = pendingTasks.filter((t) => new Date(t.dueAt) < today)
-    const dueTodayTasks = pendingTasks.filter((t) => {
-      const d = new Date(t.dueAt)
-      return d >= today && d < todayEnd
-    })
-
-    // Pace: calls/hr in active session
-    let pace: number | null = null
-    if (sessionStartedAt) {
-      const sessionStart = new Date(sessionStartedAt)
-      const hoursElapsed = (now.getTime() - sessionStart.getTime()) / (1000 * 60 * 60)
-      if (hoursElapsed >= 0.01 && todayAttempts.length > 0) {
-        pace = Math.round((todayAttempts.length / hoursElapsed) * 10) / 10
-      }
-    }
+    const monthConnects = monthAttempts.filter((a) => a.outcome !== "No connect").length
+    const monthConnectRate = monthAttempts.length > 0
+      ? Math.round((monthConnects / monthAttempts.length) * 100)
+      : 0
 
     return {
       totalLeads: leads.length,
-      callsToday: todayAttempts.length,
-      dmToday: todayDM,
-      meetingsToday: todayMeetings,
       callsThisWeek: weekAttempts.length,
+      callsThisMonth: monthAttempts.length,
       connectRate,
+      monthConnectRate,
       weekMeetings,
-      tasksDueToday: dueTodayTasks.length,
-      tasksOverdue: overdueTasks.length,
-      pace,
+      monthMeetings,
     }
-  }, [leads, attempts, tasks, sessionStartedAt])
+  }, [leads, attempts])
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <MetricCard
-          title="Calls Today"
-          value={metrics.callsToday}
-          subtitle={`${metrics.dmToday} DM reached`}
-          icon={Phone}
-        />
-        <MetricCard
-          title="Meetings"
-          value={metrics.meetingsToday}
-          subtitle={`${metrics.weekMeetings} this week`}
-          icon={Calendar}
-        />
-        <MetricCard
-          title="Connect Rate"
-          value={`${metrics.connectRate}%`}
-          subtitle={`${metrics.callsThisWeek} calls this week`}
-          icon={TrendingUp}
-        />
-        <MetricCard
-          title="Tasks Due"
-          value={metrics.tasksDueToday + metrics.tasksOverdue}
-          subtitle={metrics.tasksOverdue > 0 ? `${metrics.tasksOverdue} overdue` : "all on track"}
-          icon={ClipboardList}
-        />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricCard
           title="Total Leads"
           value={metrics.totalLeads}
           icon={Users}
         />
         <MetricCard
-          title="Pace"
-          value={metrics.pace ? `${metrics.pace}/hr` : "—"}
-          subtitle={metrics.pace ? "calls per hour" : "no active session"}
-          icon={Zap}
+          title="Calls This Week"
+          value={metrics.callsThisWeek}
+          subtitle={`${metrics.callsThisMonth} this month`}
+          icon={Phone}
+        />
+        <MetricCard
+          title="Connect Rate"
+          value={`${metrics.connectRate}%`}
+          subtitle={`${metrics.monthConnectRate}% this month`}
+          icon={TrendingUp}
+        />
+        <MetricCard
+          title="Meetings"
+          value={metrics.weekMeetings}
+          subtitle={`${metrics.monthMeetings} this month`}
+          icon={Calendar}
         />
       </div>
       <PipelineFunnel leads={leads} attempts={attempts} stages={stages} />

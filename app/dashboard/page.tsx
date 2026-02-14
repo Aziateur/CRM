@@ -4,10 +4,7 @@ import { Topbar } from "@/components/topbar"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { usePipelineStages } from "@/hooks/use-pipeline-stages"
-import { useTasks } from "@/hooks/use-tasks"
-import { useDialSession } from "@/hooks/use-dial-session"
 import { DashboardWidgets } from "@/components/dashboard-widgets"
-import { MissionControl } from "@/components/mission-control"
 import { AnalyticsSection } from "@/components/analytics-section"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -15,8 +12,6 @@ export default function DashboardPage() {
   const { leads, loading: leadsLoading } = useLeads()
   const { attempts, loading: attemptsLoading } = useAttempts()
   const { stages } = usePipelineStages()
-  const { tasks } = useTasks()
-  const { session } = useDialSession()
 
   const loading = leadsLoading || attemptsLoading
 
@@ -36,13 +31,10 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            <MissionControl attempts={attempts} tasks={tasks} />
             <DashboardWidgets
               leads={leads}
               attempts={attempts}
               stages={stages}
-              tasks={tasks}
-              sessionStartedAt={session?.status === "active" ? session.startedAt : null}
             />
             <div className="mt-8">
               <h2 className="text-xl font-semibold mb-4">Analytics</h2>
