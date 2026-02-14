@@ -132,8 +132,7 @@ export function useCallSync(attemptId: string | null, callSessionId: string | nu
   }
 
   useEffect(() => {
-    // Only run if sandbox calls enabled and IDs are present
-    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true' && (attemptId || callSessionId)) {
+    if (attemptId || callSessionId) {
       startPolling()
     }
 

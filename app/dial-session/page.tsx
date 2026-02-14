@@ -183,8 +183,8 @@ export default function DialSessionPage() {
         console.error('Failed to copy phone number', err)
     }
 
-    // 3) Sandbox only: Create attempt and call_session (background)
-    if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
+    // 3) Create attempt and call_session in DB (background, non-blocking)
+    {
         const supabase = getSupabase()
         
         // Non-blocking inserts
@@ -366,7 +366,7 @@ export default function DialSessionPage() {
         // Fetch artifacts associated with this attempt (if any) via the view
         // We do this to ensure the local state has the recording/transcript if available
         let artifacts = { recording_url: null, transcript_text: null }
-        if (process.env.NEXT_PUBLIC_SANDBOX_CALLS === 'true') {
+        {
              const { data: artifactData } = await supabase
                 .from('v_calls_with_artifacts')
                 .select('recording_url, transcript_text')

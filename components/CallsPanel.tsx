@@ -68,10 +68,6 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
     fetchCalls()
   }, [leadId, phone])
 
-  if (!process.env.NEXT_PUBLIC_SANDBOX_CALLS) {
-      return null
-  }
-
   if (loading) return <div className="p-4 text-sm text-muted-foreground">Loading calls...</div>
   if (calls.length === 0) return <div className="p-4 text-sm text-muted-foreground">No calls recorded.</div>
 
@@ -80,7 +76,7 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Phone className="h-4 w-4 text-blue-600" />
-          Call History (Sandbox)
+          Call History
         </CardTitle>
       </CardHeader>
       <CardContent>
