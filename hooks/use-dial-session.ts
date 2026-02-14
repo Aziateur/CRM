@@ -78,7 +78,7 @@ export function useDialSession() {
     check()
   }, [projectId])
 
-  const startSession = useCallback(async (target: number, experiment?: string): Promise<DialSession | null> => {
+  const startSession = useCallback(async (target: number, experiment?: string, mode?: string): Promise<DialSession | null> => {
     if (!projectId) return null
     try {
       const supabase = getSupabase()
@@ -89,6 +89,7 @@ export function useDialSession() {
           client_id: clientId,
           target,
           experiment: experiment || null,
+          mode: mode || "all",
           status: "active",
           started_at: new Date().toISOString(),
           project_id: projectId,

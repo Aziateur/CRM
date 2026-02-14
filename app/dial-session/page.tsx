@@ -12,6 +12,7 @@ import { useAttempts } from "@/hooks/use-attempts"
 import { useTasks } from "@/hooks/use-tasks"
 import { useDialQueue } from "@/hooks/use-dial-queue"
 import { useDialSession } from "@/hooks/use-dial-session"
+import { useDialModes, type DialMode } from "@/hooks/use-dial-modes"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -88,8 +89,12 @@ export default function DialSessionPage() {
   const { attempts: allAttempts, setAttempts: setAllAttempts } = useAttempts()
   const { tasks: allTasks, refetch: refetchTasks } = useTasks()
 
-  // Dial queue
-  const { queue } = useDialQueue(leads, allAttempts, allTasks)
+  // Dial modes
+  const { modes } = useDialModes(leads, allAttempts, allTasks)
+  const [selectedMode, setSelectedMode] = useState<DialMode | null>(null)
+
+  // Dial queue (filtered by selected mode)
+  const { queue } = useDialQueue(leads, allAttempts, allTasks, selectedMode)
 
   // Session persistence
   const {
@@ -237,7 +242,8 @@ export default function DialSessionPage() {
   // --- Actions ---
 
   const handleStartSession = async () => {
-    await startPersistedSession(sessionTarget, selectedExperiment === "none" ? undefined : selectedExperiment)
+    if (!selectedMode) return
+    await startPersistedSession(sessionTarget, selectedExperiment === "none" ? undefined : selectedExperiment, selectedMode)
     setSessionStartTime(new Date())
     setSessionAttempts([])
     setCurrentQueueIndex(0)
@@ -516,15 +522,51 @@ export default function DialSessionPage() {
               </Card>
             )}
 
-            {/* New Session Card */}
+            {/* Dial Mode Selector */}
             <Card>
               <CardHeader>
                 <CardTitle>
                   {hasActiveSession ? "Or Start Fresh" : "Start Dial Session"}
                 </CardTitle>
-                <CardDescription>Set your target and begin dialing</CardDescription>
+                <CardDescription>Choose what kind of leads to call</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Mode Cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  {modes.map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setSelectedMode(mode.id)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all ${selectedMode === mode.id
+                          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                          : "border-border hover:border-primary/40 hover:bg-muted/50"
+                        }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xl">{mode.icon}</span>
+                        <span className="font-semibold text-sm">{mode.label}</span>
+                      </div>
+                      <p className="text-3xl font-bold tabular-nums mb-1">{mode.count}</p>
+                      <p className="text-xs text-muted-foreground leading-tight">{mode.description}</p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Queue Preview (shown after mode selected) */}
+                {selectedMode && (
+                  <div className="p-4 bg-muted rounded-lg animate-in slide-in-from-top-2">
+                    <p className="text-sm text-muted-foreground mb-1">Queue ready:</p>
+                    <p className="text-2xl font-bold">{queue.length} leads</p>
+                    {queue.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        First up: {queue[0].lead.company} — {queue[0].reason}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Target */}
                 <div className="grid gap-2">
                   <Label>Call Target</Label>
                   <Select
@@ -543,16 +585,6 @@ export default function DialSessionPage() {
                   </Select>
                 </div>
 
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Queue ready:</p>
-                  <p className="text-2xl font-bold">{queue.length} leads</p>
-                  {queue.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      First up: {queue[0].lead.company} — {queue[0].reason}
-                    </p>
-                  )}
-                </div>
-
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -564,7 +596,7 @@ export default function DialSessionPage() {
                   <Button
                     className="flex-1"
                     onClick={handleStartSession}
-                    disabled={queue.length === 0}
+                    disabled={!selectedMode || queue.length === 0}
                   >
                     <Play className="mr-2 h-4 w-4" />
                     Start Session
