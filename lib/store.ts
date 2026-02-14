@@ -262,6 +262,8 @@ export interface Attempt {
   callTranscriptText?: string // plain-text transcript from webhook view
   callSummary?: string
   status?: "pending" | "completed" | "failed"
+  // Telemetry
+  rulesShown?: string[] // rule IDs shown in call-prep panel
 }
 
 export interface TranscriptSegment {

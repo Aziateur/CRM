@@ -88,6 +88,7 @@ export default function DialSessionPage() {
   // Data hooks
   const { leads } = useLeads({ withContacts: true })
   const { attempts: allAttempts, setAttempts: setAllAttempts } = useAttempts()
+  const [rulesShownIds, setRulesShownIds] = useState<string[]>([])
   const { tasks: allTasks, refetch: refetchTasks } = useTasks()
 
   // Dial modes
@@ -344,6 +345,7 @@ export default function DialSessionPage() {
       session_id: persistedSession?.id || null,
       duration_sec: 0, // Real duration comes from OpenPhone webhook via call_sessions
       project_id: projectId,
+      rules_shown: rulesShownIds,
     }
 
     const supabase = getSupabase()
@@ -377,6 +379,7 @@ export default function DialSessionPage() {
         createdAt: data.created_at,
         recordingUrl: undefined,
         callTranscriptText: undefined,
+        rulesShown: data.rules_shown ?? [],
       }
 
       // Store signals in localStorage — only the phase's markers
@@ -780,6 +783,7 @@ export default function DialSessionPage() {
         <CallPrepPanel
           leadSegment={currentLead?.segment}
           leadStage={currentLead?.stage}
+          onRulesLoaded={setRulesShownIds}
         />
 
         {currentLead ? (

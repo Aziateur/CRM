@@ -23,9 +23,10 @@ interface ActiveSignal {
 interface CallPrepProps {
     leadSegment?: string
     leadStage?: string
+    onRulesLoaded?: (ruleIds: string[]) => void
 }
 
-export function CallPrepPanel({ leadSegment, leadStage }: CallPrepProps) {
+export function CallPrepPanel({ leadSegment, leadStage, onRulesLoaded }: CallPrepProps) {
     const projectId = useProjectId()
     const [rules, setRules] = useState<ActiveRule[]>([])
     const [signals, setSignals] = useState<ActiveSignal[]>([])
@@ -54,6 +55,11 @@ export function CallPrepPanel({ leadSegment, leadStage }: CallPrepProps) {
                     name: s.name as string,
                     description: (s.description || "") as string,
                 })))
+            }
+
+            // Notify parent of loaded rule IDs for telemetry
+            if (onRulesLoaded && rulesRes.data) {
+                onRulesLoaded(rulesRes.data.map((r: Record<string, unknown>) => r.id as string))
             }
         }
         fetch()
