@@ -29,6 +29,7 @@ import { useReviewTemplates, type ReviewField } from "@/hooks/use-review-templat
 import { getSupabase } from "@/lib/supabase"
 import { useProjectId } from "@/hooks/use-project-id"
 import type { Attempt, Lead } from "@/lib/store"
+import { PromoteToPlaybookModal } from "@/components/promote-to-playbook-modal"
 
 // ─── Types ───
 
@@ -216,6 +217,7 @@ export default function ReviewPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [marketInsight, setMarketInsight] = useState("")
   const [promoteToPlaybook, setPromoteToPlaybook] = useState(false)
+  const [showPromotionModal, setShowPromotionModal] = useState(false)
 
   // Deep review state — template-driven
   const [responses, setResponses] = useState<Record<string, unknown>>({})
@@ -332,6 +334,7 @@ export default function ReviewPage() {
     setSelectedTags([])
     setMarketInsight("")
     setPromoteToPlaybook(false)
+    setShowPromotionModal(false)
     setShowUnverifiedConfirm(false)
     // Deep responses reset handled by useEffect on currentIndex change
   }
@@ -409,448 +412,464 @@ export default function ReviewPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Topbar
-        title="Call Review"
-        actions={
-          <Badge variant="outline" className="text-sm">
-            {reviewableCalls.length} calls to review
-          </Badge>
-        }
-      />
+    <>
+      <div className="flex flex-col min-h-screen">
+        <Topbar
+          title="Call Review"
+          actions={
+            <Badge variant="outline" className="text-sm">
+              {reviewableCalls.length} calls to review
+            </Badge>
+          }
+        />
 
-      <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "quick" | "deep")} className="space-y-6">
-          <div className="flex items-center justify-between">
-            <TabsList className="grid grid-cols-2 w-80">
-              <TabsTrigger value="quick" className="gap-2">
-                <Zap className="h-4 w-4" />
-                Quick Batch
-              </TabsTrigger>
-              <TabsTrigger value="deep" className="gap-2">
-                <BookOpen className="h-4 w-4" />
-                Deep Dive
-              </TabsTrigger>
-            </TabsList>
+        <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "quick" | "deep")} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <TabsList className="grid grid-cols-2 w-80">
+                <TabsTrigger value="quick" className="gap-2">
+                  <Zap className="h-4 w-4" />
+                  Quick Batch
+                </TabsTrigger>
+                <TabsTrigger value="deep" className="gap-2">
+                  <BookOpen className="h-4 w-4" />
+                  Deep Dive
+                </TabsTrigger>
+              </TabsList>
 
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              {activeDeepTemplate && activeTab === "deep" && (
-                <Badge variant="secondary" className="text-xs">
-                  {activeDeepTemplate.name} v{activeDeepTemplate.version}
-                </Badge>
-              )}
-              <span className="tabular-nums font-medium">
-                {currentIndex + 1} / {reviewableCalls.length}
-              </span>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                {activeDeepTemplate && activeTab === "deep" && (
+                  <Badge variant="secondary" className="text-xs">
+                    {activeDeepTemplate.name} v{activeDeepTemplate.version}
+                  </Badge>
+                )}
+                <span className="tabular-nums font-medium">
+                  {currentIndex + 1} / {reviewableCalls.length}
+                </span>
+              </div>
             </div>
-          </div>
 
-          {/* ─── Call Card (shared between tabs) ─── */}
-          {currentCall ? (
-            <Card className="mb-4">
-              <CardContent className="pt-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-lg">
-                      {currentCall.lead?.company || "Unknown Company"}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {currentCall.attempt.outcome} ·{" "}
-                      {new Date(currentCall.attempt.timestamp).toLocaleDateString()}
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge
-                        variant={
-                          currentCall.attempt.outcome === "Meeting set"
-                            ? "default"
-                            : currentCall.attempt.outcome?.includes("interest")
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {currentCall.attempt.outcome}
-                      </Badge>
-                      {currentCall.attempt.why && (
-                        <Badge variant="outline">{currentCall.attempt.why}</Badge>
-                      )}
+            {/* ─── Call Card (shared between tabs) ─── */}
+            {currentCall ? (
+              <Card className="mb-4">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-lg">
+                        {currentCall.lead?.company || "Unknown Company"}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {currentCall.attempt.outcome} ·{" "}
+                        {new Date(currentCall.attempt.timestamp).toLocaleDateString()}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge
+                          variant={
+                            currentCall.attempt.outcome === "Meeting set"
+                              ? "default"
+                              : currentCall.attempt.outcome?.includes("interest")
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {currentCall.attempt.outcome}
+                        </Badge>
+                        {currentCall.attempt.why && (
+                          <Badge variant="outline">{currentCall.attempt.why}</Badge>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Audio Player */}
+                    {currentCall.session?.recording_url ? (
+                      <div className="flex items-center gap-2">
+                        <audio
+                          controls
+                          src={currentCall.session.recording_url}
+                          className="h-8"
+                          preload="none"
+                        />
+                      </div>
+                    ) : currentCall.session ? (
+                      <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300 animate-pulse">
+                        Recording pending...
+                      </Badge>
+                    ) : null}
                   </div>
 
-                  {/* Audio Player */}
-                  {currentCall.session?.recording_url ? (
-                    <div className="flex items-center gap-2">
-                      <audio
-                        controls
-                        src={currentCall.session.recording_url}
-                        className="h-8"
-                        preload="none"
-                      />
+                  {/* Transcript */}
+                  {currentCall.session?.transcript_text ? (
+                    <div className="mt-4 p-3 bg-muted rounded-lg max-h-48 overflow-y-auto">
+                      <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        Transcript
+                      </p>
+                      <p className="text-sm whitespace-pre-wrap">{currentCall.session.transcript_text}</p>
                     </div>
                   ) : currentCall.session ? (
-                    <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300 animate-pulse">
-                      Recording pending...
-                    </Badge>
+                    <div className="mt-4 p-3 bg-yellow-50/50 rounded-lg border border-yellow-200">
+                      <p className="text-xs text-yellow-600 flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        Transcript processing — will appear when OpenPhone webhook delivers it
+                      </p>
+                    </div>
                   ) : null}
-                </div>
 
-                {/* Transcript */}
-                {currentCall.session?.transcript_text ? (
-                  <div className="mt-4 p-3 bg-muted rounded-lg max-h-48 overflow-y-auto">
-                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" />
-                      Transcript
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">{currentCall.session.transcript_text}</p>
-                  </div>
-                ) : currentCall.session ? (
-                  <div className="mt-4 p-3 bg-yellow-50/50 rounded-lg border border-yellow-200">
-                    <p className="text-xs text-yellow-600 flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" />
-                      Transcript processing — will appear when OpenPhone webhook delivers it
-                    </p>
-                  </div>
-                ) : null}
-
-                {/* Rep Notes */}
-                {currentCall.attempt.note && (
-                  <div className="mt-3 p-2 bg-muted/50 rounded">
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Rep Notes</p>
-                    <p className="text-sm">{currentCall.attempt.note}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <Check className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                <h3 className="text-lg font-semibold">All Caught Up!</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  No more calls to review. Come back after your next session.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ─── Quick Batch Tab ─── */}
-          <TabsContent value="quick" className="mt-0 space-y-4">
-            {currentCall && (
-              <>
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Tag This Call</CardTitle>
-                    <CardDescription>Select all that apply — builds your pattern library</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {QUICK_TAGS.map((tag) => (
-                        <button
-                          key={tag.value}
-                          type="button"
-                          onClick={() => toggleTag(tag.value)}
-                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selectedTags.includes(tag.value)
-                            ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                            }`}
-                        >
-                          {tag.label}
-                        </button>
-                      ))}
+                  {/* Rep Notes */}
+                  {currentCall.attempt.note && (
+                    <div className="mt-3 p-2 bg-muted/50 rounded">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Rep Notes</p>
+                      <p className="text-sm">{currentCall.attempt.note}</p>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-cyan-500" />
-                        Market Insight
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea
-                        placeholder="Any market intel from this call? Competitor mentions, budget timing, industry trends..."
-                        value={marketInsight}
-                        onChange={(e) => setMarketInsight(e.target.value)}
-                        className="resize-none"
-                        rows={3}
-                      />
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Star className="h-4 w-4 text-yellow-500" />
-                        Playbook
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <button
-                        type="button"
-                        onClick={() => setPromoteToPlaybook(!promoteToPlaybook)}
-                        className={`w-full p-4 rounded-lg border-2 text-left transition-all ${promoteToPlaybook
-                          ? "border-yellow-500 bg-yellow-500/5"
-                          : "border-border hover:border-yellow-500/40"
-                          }`}
-                      >
-                        <p className="font-medium text-sm">
-                          {promoteToPlaybook ? "✓ Marked for Playbook" : "Promote to Playbook?"}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Flag this call as a learning moment to review later
-                        </p>
-                      </button>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Evidence warning — Quick Batch */}
-                {!hasEvidence && currentCall && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50/50 text-sm">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="font-medium text-amber-800">No recording or transcript available</p>
-                      <p className="text-amber-600 text-xs mt-0.5">
-                        This review will be marked as <span className="font-semibold">Unverified</span> — scored from memory, not evidence.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
-                    <SkipForward className="mr-2 h-4 w-4" />
-                    Skip
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={handleQuickSubmit}
-                    disabled={saving || selectedTags.length === 0}
-                  >
-                    <Check className="mr-2 h-4 w-4" />
-                    Tag & Next
-                  </Button>
-                </div>
-              </>
-            )}
-          </TabsContent>
-
-          {/* ─── Deep Dive Tab (template-driven) ─── */}
-          <TabsContent value="deep" className="mt-0 space-y-4">
-            {currentCall && activeDeepTemplate && (
-              <>
-                {/* Template Header + Score */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm flex items-center justify-between">
-                      <span>{activeDeepTemplate.name}</span>
-                      {scoreFields.length > 0 && (
-                        <span className="tabular-nums text-lg">
-                          {totalScore} / {maxScore}
-                        </span>
-                      )}
-                    </CardTitle>
-                    {activeDeepTemplate.description && (
-                      <CardDescription>{activeDeepTemplate.description}</CardDescription>
-                    )}
-                  </CardHeader>
-                </Card>
-
-                {/* Render fields by section */}
-                {fieldSections.map(([section, fields]) => (
-                  <Card key={section}>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider">
-                        {section}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-5">
-                      {fields.map((field) => {
-                        // ─── Score Field with Calibration Anchors ───
-                        if (field.fieldType === "score") {
-                          const value = (responses[field.key] as number) ?? field.config.min ?? 1
-                          return (
-                            <div key={field.key}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div>
-                                  <Label className="font-medium">{field.label}</Label>
-                                </div>
-                                <span className="text-xl font-bold tabular-nums w-8 text-right">
-                                  {value}
-                                </span>
-                              </div>
-                              <Slider
-                                min={field.config.min ?? 1}
-                                max={field.config.max ?? 5}
-                                step={1}
-                                value={[value]}
-                                onValueChange={(v) =>
-                                  setResponses((prev) => ({ ...prev, [field.key]: v[0] }))
-                                }
-                                className="w-full"
-                              />
-                              {/* Calibration anchor for current value */}
-                              <AnchorLabel value={value} anchors={field.config.anchors} />
-                            </div>
-                          )
-                        }
-
-                        // ─── Text Field ───
-                        if (field.fieldType === "text") {
-                          return (
-                            <div key={field.key}>
-                              <Label className="font-medium">{field.label}</Label>
-                              <Textarea
-                                value={(responses[field.key] as string) ?? ""}
-                                onChange={(e) =>
-                                  setResponses((prev) => ({
-                                    ...prev,
-                                    [field.key]: e.target.value,
-                                  }))
-                                }
-                                placeholder={field.config.placeholder ?? ""}
-                                rows={field.config.rows ?? 3}
-                                className="resize-none mt-1.5"
-                              />
-                            </div>
-                          )
-                        }
-
-                        // ─── Evidence Quote Field ───
-                        if (field.fieldType === "evidence_quote") {
-                          return (
-                            <EvidenceQuoteField
-                              key={field.key}
-                              field={field}
-                              transcriptText={currentCall.session?.transcript_text ?? null}
-                              snippet={evidenceSnippets.find((s) => s.fieldKey === field.key)}
-                              onUpdate={(s) => updateEvidence(field.key, s)}
-                            />
-                          )
-                        }
-
-                        // ─── Checkbox Field ───
-                        if (field.fieldType === "checkbox") {
-                          return (
-                            <label key={field.key} className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={(responses[field.key] as boolean) ?? false}
-                                onChange={(e) =>
-                                  setResponses((prev) => ({
-                                    ...prev,
-                                    [field.key]: e.target.checked,
-                                  }))
-                                }
-                                className="rounded"
-                              />
-                              <span className="text-sm font-medium">{field.label}</span>
-                            </label>
-                          )
-                        }
-
-                        // ─── Multi-Select Field ───
-                        if (field.fieldType === "multi_select") {
-                          const selected = (responses[field.key] as string[]) ?? []
-                          return (
-                            <div key={field.key}>
-                              <Label className="font-medium">{field.label}</Label>
-                              <div className="flex flex-wrap gap-2 mt-1.5">
-                                {(field.config.options ?? []).map((opt) => (
-                                  <button
-                                    key={opt.value}
-                                    type="button"
-                                    onClick={() =>
-                                      setResponses((prev) => {
-                                        const cur = (prev[field.key] as string[]) ?? []
-                                        return {
-                                          ...prev,
-                                          [field.key]: cur.includes(opt.value)
-                                            ? cur.filter((v) => v !== opt.value)
-                                            : [...cur, opt.value],
-                                        }
-                                      })
-                                    }
-                                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selected.includes(opt.value)
-                                      ? `${opt.color ?? "bg-primary/10 text-primary"} ring-2 ring-offset-1 ring-primary/30`
-                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                                      }`}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )
-                        }
-
-                        return null
-                      })}
-                    </CardContent>
-                  </Card>
-                ))}
-
-                {/* Evidence warning — Deep Dive */}
-                {!hasEvidence && currentCall && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg border border-red-300 bg-red-50/50 text-sm">
-                    <ShieldAlert className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="font-medium text-red-800">Evidence required for Deep Dive</p>
-                      <p className="text-red-600 text-xs mt-0.5">
-                        No recording or transcript — scoring without evidence contaminates analytics.
-                        You can still submit, but the review will be marked <span className="font-semibold">Unverified</span>.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Unverified confirmation */}
-                {showUnverifiedConfirm && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg border-2 border-red-400 bg-red-50">
-                    <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
-                    <p className="text-sm text-red-800 flex-1">Are you sure? This Deep Dive will be saved as <strong>Unverified</strong>.</p>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setShowUnverifiedConfirm(false)} className="text-xs h-7">
-                        Cancel
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={handleDeepSubmit} className="text-xs h-7">
-                        Submit Unverified
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Deep Actions */}
-                <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
-                    <SkipForward className="mr-2 h-4 w-4" />
-                    Skip
-                  </Button>
-                  <Button className="flex-1" onClick={handleDeepSubmit} disabled={saving}>
-                    <Check className="mr-2 h-4 w-4" />
-                    {hasEvidence ? "Save Deep Review" : "Submit as Unverified…"}
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* No template state */}
-            {currentCall && !activeDeepTemplate && !templatesLoading && (
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
               <Card>
-                <CardContent className="py-12 text-center">
-                  <BookOpen className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                  <h3 className="font-semibold">No Review Template Found</h3>
+                <CardContent className="py-16 text-center">
+                  <Check className="h-12 w-12 text-green-500 mx-auto mb-3" />
+                  <h3 className="text-lg font-semibold">All Caught Up!</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Create a review template in Settings → Templates to enable Deep Dive reviews
+                    No more calls to review. Come back after your next session.
                   </p>
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
-        </Tabs>
+
+            {/* ─── Quick Batch Tab ─── */}
+            <TabsContent value="quick" className="mt-0 space-y-4">
+              {currentCall && (
+                <>
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Tag This Call</CardTitle>
+                      <CardDescription>Select all that apply — builds your pattern library</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2">
+                        {QUICK_TAGS.map((tag) => (
+                          <button
+                            key={tag.value}
+                            type="button"
+                            onClick={() => toggleTag(tag.value)}
+                            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selectedTags.includes(tag.value)
+                              ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                              }`}
+                          >
+                            {tag.label}
+                          </button>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-cyan-500" />
+                          Market Insight
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Textarea
+                          placeholder="Any market intel from this call? Competitor mentions, budget timing, industry trends..."
+                          value={marketInsight}
+                          onChange={(e) => setMarketInsight(e.target.value)}
+                          className="resize-none"
+                          rows={3}
+                        />
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Star className="h-4 w-4 text-yellow-500" />
+                          Playbook
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <button
+                          type="button"
+                          onClick={() => setShowPromotionModal(true)}
+                          className={`w-full p-4 rounded-lg border-2 text-left transition-all ${promoteToPlaybook
+                            ? "border-green-500 bg-green-500/5"
+                            : "border-border hover:border-yellow-500/40"
+                            }`}
+                        >
+                          <p className="font-medium text-sm">
+                            {promoteToPlaybook ? "✓ Promoted to Playbook" : "Promote to Playbook"}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {promoteToPlaybook
+                              ? "Rule and evidence link created"
+                              : "Create a new rule or link evidence to an existing one"}
+                          </p>
+                        </button>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Evidence warning — Quick Batch */}
+                  {!hasEvidence && currentCall && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50/50 text-sm">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-amber-800">No recording or transcript available</p>
+                        <p className="text-amber-600 text-xs mt-0.5">
+                          This review will be marked as <span className="font-semibold">Unverified</span> — scored from memory, not evidence.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
+                      <SkipForward className="mr-2 h-4 w-4" />
+                      Skip
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={handleQuickSubmit}
+                      disabled={saving || selectedTags.length === 0}
+                    >
+                      <Check className="mr-2 h-4 w-4" />
+                      Tag & Next
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
+            {/* ─── Deep Dive Tab (template-driven) ─── */}
+            <TabsContent value="deep" className="mt-0 space-y-4">
+              {currentCall && activeDeepTemplate && (
+                <>
+                  {/* Template Header + Score */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        <span>{activeDeepTemplate.name}</span>
+                        {scoreFields.length > 0 && (
+                          <span className="tabular-nums text-lg">
+                            {totalScore} / {maxScore}
+                          </span>
+                        )}
+                      </CardTitle>
+                      {activeDeepTemplate.description && (
+                        <CardDescription>{activeDeepTemplate.description}</CardDescription>
+                      )}
+                    </CardHeader>
+                  </Card>
+
+                  {/* Render fields by section */}
+                  {fieldSections.map(([section, fields]) => (
+                    <Card key={section}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider">
+                          {section}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-5">
+                        {fields.map((field) => {
+                          // ─── Score Field with Calibration Anchors ───
+                          if (field.fieldType === "score") {
+                            const value = (responses[field.key] as number) ?? field.config.min ?? 1
+                            return (
+                              <div key={field.key}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div>
+                                    <Label className="font-medium">{field.label}</Label>
+                                  </div>
+                                  <span className="text-xl font-bold tabular-nums w-8 text-right">
+                                    {value}
+                                  </span>
+                                </div>
+                                <Slider
+                                  min={field.config.min ?? 1}
+                                  max={field.config.max ?? 5}
+                                  step={1}
+                                  value={[value]}
+                                  onValueChange={(v) =>
+                                    setResponses((prev) => ({ ...prev, [field.key]: v[0] }))
+                                  }
+                                  className="w-full"
+                                />
+                                {/* Calibration anchor for current value */}
+                                <AnchorLabel value={value} anchors={field.config.anchors} />
+                              </div>
+                            )
+                          }
+
+                          // ─── Text Field ───
+                          if (field.fieldType === "text") {
+                            return (
+                              <div key={field.key}>
+                                <Label className="font-medium">{field.label}</Label>
+                                <Textarea
+                                  value={(responses[field.key] as string) ?? ""}
+                                  onChange={(e) =>
+                                    setResponses((prev) => ({
+                                      ...prev,
+                                      [field.key]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={field.config.placeholder ?? ""}
+                                  rows={field.config.rows ?? 3}
+                                  className="resize-none mt-1.5"
+                                />
+                              </div>
+                            )
+                          }
+
+                          // ─── Evidence Quote Field ───
+                          if (field.fieldType === "evidence_quote") {
+                            return (
+                              <EvidenceQuoteField
+                                key={field.key}
+                                field={field}
+                                transcriptText={currentCall.session?.transcript_text ?? null}
+                                snippet={evidenceSnippets.find((s) => s.fieldKey === field.key)}
+                                onUpdate={(s) => updateEvidence(field.key, s)}
+                              />
+                            )
+                          }
+
+                          // ─── Checkbox Field ───
+                          if (field.fieldType === "checkbox") {
+                            return (
+                              <label key={field.key} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={(responses[field.key] as boolean) ?? false}
+                                  onChange={(e) =>
+                                    setResponses((prev) => ({
+                                      ...prev,
+                                      [field.key]: e.target.checked,
+                                    }))
+                                  }
+                                  className="rounded"
+                                />
+                                <span className="text-sm font-medium">{field.label}</span>
+                              </label>
+                            )
+                          }
+
+                          // ─── Multi-Select Field ───
+                          if (field.fieldType === "multi_select") {
+                            const selected = (responses[field.key] as string[]) ?? []
+                            return (
+                              <div key={field.key}>
+                                <Label className="font-medium">{field.label}</Label>
+                                <div className="flex flex-wrap gap-2 mt-1.5">
+                                  {(field.config.options ?? []).map((opt) => (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() =>
+                                        setResponses((prev) => {
+                                          const cur = (prev[field.key] as string[]) ?? []
+                                          return {
+                                            ...prev,
+                                            [field.key]: cur.includes(opt.value)
+                                              ? cur.filter((v) => v !== opt.value)
+                                              : [...cur, opt.value],
+                                          }
+                                        })
+                                      }
+                                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selected.includes(opt.value)
+                                        ? `${opt.color ?? "bg-primary/10 text-primary"} ring-2 ring-offset-1 ring-primary/30`
+                                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                        }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          }
+
+                          return null
+                        })}
+                      </CardContent>
+                    </Card>
+                  ))}
+
+                  {/* Evidence warning — Deep Dive */}
+                  {!hasEvidence && currentCall && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg border border-red-300 bg-red-50/50 text-sm">
+                      <ShieldAlert className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-red-800">Evidence required for Deep Dive</p>
+                        <p className="text-red-600 text-xs mt-0.5">
+                          No recording or transcript — scoring without evidence contaminates analytics.
+                          You can still submit, but the review will be marked <span className="font-semibold">Unverified</span>.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Unverified confirmation */}
+                  {showUnverifiedConfirm && (
+                    <div className="flex items-center gap-3 p-3 rounded-lg border-2 border-red-400 bg-red-50">
+                      <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+                      <p className="text-sm text-red-800 flex-1">Are you sure? This Deep Dive will be saved as <strong>Unverified</strong>.</p>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setShowUnverifiedConfirm(false)} className="text-xs h-7">
+                          Cancel
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={handleDeepSubmit} className="text-xs h-7">
+                          Submit Unverified
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Deep Actions */}
+                  <div className="flex gap-3">
+                    <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
+                      <SkipForward className="mr-2 h-4 w-4" />
+                      Skip
+                    </Button>
+                    <Button className="flex-1" onClick={handleDeepSubmit} disabled={saving}>
+                      <Check className="mr-2 h-4 w-4" />
+                      {hasEvidence ? "Save Deep Review" : "Submit as Unverified…"}
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {/* No template state */}
+              {currentCall && !activeDeepTemplate && !templatesLoading && (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <BookOpen className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <h3 className="font-semibold">No Review Template Found</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Create a review template in Settings → Templates to enable Deep Dive reviews
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-    </div>
+
+      {/* Promotion Modal */}
+      {
+        showPromotionModal && currentCall && (
+          <PromoteToPlaybookModal
+            attemptId={currentCall.attempt.id}
+            callSessionId={currentCall.session?.call_session_id}
+            onPromoted={() => setPromoteToPlaybook(true)}
+            onClose={() => setShowPromotionModal(false)}
+          />
+        )
+      }
+    </>
   )
 }
