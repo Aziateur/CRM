@@ -1,694 +1,522 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { getSupabase } from "@/lib/supabase"
+import { useState, useEffect, useMemo } from "react"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
-import { 
-  ChevronRight, 
-  ChevronLeft,
-  ThumbsUp,
-  ThumbsDown,
-  SkipForward,
-  ChevronDown,
-  ChevronUp,
-  Building2,
-  User,
-  Clock,
-  Play,
-  Check,
-  AlertTriangle
-} from "lucide-react"
-import { useLeads } from "@/hooks/use-leads"
-import { useAttempts } from "@/hooks/use-attempts"
+import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
 import {
-  drills,
-  calculateMetrics,
-  getTopFailureReasons,
-  type Attempt,
-  type Lead,
-  type Outcome,
-  type RuleConfidence,
-  type Drill,
-} from "@/lib/store"
+  Play,
+  Pause,
+  SkipForward,
+  Check,
+  ChevronRight,
+  Star,
+  AlertCircle,
+  BookOpen,
+  Zap,
+  MessageSquare,
+} from "lucide-react"
+import { useAttempts } from "@/hooks/use-attempts"
+import { useLeads } from "@/hooks/use-leads"
+import { useCallReviews } from "@/hooks/use-call-reviews"
+import { getSupabase } from "@/lib/supabase"
+import { useProjectId } from "@/hooks/use-project-id"
+import type { Attempt, Lead } from "@/lib/store"
 
-const getOutcomeColor = (outcome: Outcome) => {
-  const colors: Record<Outcome, string> = {
-    "No connect": "bg-muted text-muted-foreground",
-    "Gatekeeper only": "bg-orange-100 text-orange-800",
-    "DM reached → No interest": "bg-red-100 text-red-800",
-    "DM reached → Some interest": "bg-amber-100 text-amber-800",
-    "Meeting set": "bg-green-100 text-green-800",
-  }
-  return colors[outcome] || "bg-muted text-muted-foreground"
+// ─── Types ───
+
+interface CallSession {
+  id: string
+  openphone_call_id: string | null
+  recording_url: string | null
+  transcript: string | null
+  duration_sec: number | null
 }
 
-type ReviewRating = "top" | "bottom" | "skip" | null
-
-interface AttemptWithRating extends Attempt {
-  rating?: ReviewRating
+interface ReviewableCall {
+  attempt: Attempt
+  lead: Lead | null
+  session: CallSession | null
 }
 
-type ReviewStep = "setup" | "review" | "summary" | "learnings" | "complete"
+// ─── Quick Review Tags ───
 
-export default function BatchReviewPage() {
-  const router = useRouter()
-  
-  // Step state
-  const [currentStep, setCurrentStep] = useState<ReviewStep>("setup")
-  
-  // Setup state
-  const [reviewRange, setReviewRange] = useState<"last20" | "last50" | "custom">("last20")
-  const [experimentFilter, setExperimentFilter] = useState<string>("all")
-  
-  // Review state
-  const [attemptsToReview, setAttemptsToReview] = useState<AttemptWithRating[]>([])
-  const [currentPage, setCurrentPage] = useState(0)
-  const [expandedAttemptId, setExpandedAttemptId] = useState<string | null>(null)
-  const attemptsPerPage = 5
-  
-  // Learnings state
-  const [learningNotes, setLearningNotes] = useState("")
-  const [newRuleText, setNewRuleText] = useState("")
-  const [proposedRules, setProposedRules] = useState<{ ifWhen: string; then: string; because: string; confidence: RuleConfidence }[]>([])
-  const [selectedDrill, setSelectedDrill] = useState<string>("")
-  const [drillDuration, setDrillDuration] = useState(10)
-  
-  // Data state (shared hooks)
-  const { leads: allLeads } = useLeads()
-  const { attempts: allAttempts } = useAttempts()
-  const [experiments, setExperiments] = useState<{ id: string; name: string }[]>([])
+const QUICK_TAGS = [
+  { value: "solid_opener", label: "Solid Opener", color: "bg-green-500/10 text-green-600" },
+  { value: "good_discovery", label: "Good Discovery", color: "bg-blue-500/10 text-blue-600" },
+  { value: "handled_objection", label: "Handled Objection", color: "bg-purple-500/10 text-purple-600" },
+  { value: "weak_close", label: "Weak Close", color: "bg-orange-500/10 text-orange-600" },
+  { value: "talked_too_much", label: "Talked Too Much", color: "bg-red-500/10 text-red-600" },
+  { value: "no_next_step", label: "No Next Step", color: "bg-red-500/10 text-red-600" },
+  { value: "market_intel", label: "Market Intel", color: "bg-cyan-500/10 text-cyan-600" },
+  { value: "competitor_mention", label: "Competitor Mention", color: "bg-yellow-500/10 text-yellow-600" },
+]
 
-  useEffect(() => {
-    const fetchExperiments = async () => {
-      const supabase = getSupabase()
-      const { data } = await supabase.from("experiments").select("*")
-      if (data) setExperiments(data)
-    }
-    fetchExperiments()
-  }, [])
+// ─── Deep Dive Rubric ───
 
-  const startReview = () => {
-    let filteredAttempts = [...allAttempts]
+const RUBRIC_DIMENSIONS = [
+  { key: "opening", label: "Opening", description: "Hook, pattern interrupt, tonality" },
+  { key: "discovery", label: "Discovery", description: "Questions, pain uncovering, listening" },
+  { key: "control", label: "Frame Control", description: "Directing conversation, pacing" },
+  { key: "objections", label: "Objection Handling", description: "Reframes, empathy, persistence" },
+  { key: "close", label: "Close Attempt", description: "Asked for commitment, urgency" },
+  { key: "nextStep", label: "Next Step Lock", description: "Calendar invite, clear follow-up" },
+] as const
+
+// ─── Page ───
+
+export default function ReviewPage() {
+  const projectId = useProjectId()
+  const { attempts } = useAttempts()
+  const { leads } = useLeads()
+  const { saveQuickReview, saveDeepReview, saving } = useCallReviews()
+
+  // State
+  const [activeTab, setActiveTab] = useState<"quick" | "deep">("quick")
+  const [callSessions, setCallSessions] = useState<CallSession[]>([])
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set())
+
+  // Quick review state
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [marketInsight, setMarketInsight] = useState("")
+  const [promoteToPlaybook, setPromoteToPlaybook] = useState(false)
+
+  // Deep review state
+  const [scores, setScores] = useState<Record<string, number>>({
+    opening: 3,
+    discovery: 3,
+    control: 3,
+    objections: 3,
+    close: 3,
+    nextStep: 3,
+  })
+  const [whatWorked, setWhatWorked] = useState("")
+  const [whatFailed, setWhatFailed] = useState("")
+  const [coachingNotes, setCoachingNotes] = useState("")
+
+  // Build reviewable calls — attempts with DM connection (actual conversations)
+  const reviewableCalls = useMemo((): ReviewableCall[] => {
+    const leadMap = new Map(leads.map((l) => [l.id, l]))
+    const sessionMap = new Map(callSessions.map((s) => [s.id, s]))
+
+    return attempts
+      .filter((a) => a.dmReached && !reviewedIds.has(a.id))
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    
-    if (experimentFilter !== "all") {
-      filteredAttempts = filteredAttempts.filter(a => a.experimentTag === experimentFilter)
+      .map((attempt) => ({
+        attempt,
+        lead: leadMap.get(attempt.leadId) || null,
+        session: attempt.callSessionId ? sessionMap.get(attempt.callSessionId) || null : null,
+      }))
+  }, [attempts, leads, callSessions, reviewedIds])
+
+  const currentCall = reviewableCalls[currentIndex] || null
+
+  // Fetch call sessions on mount
+  useEffect(() => {
+    if (!projectId) return
+    const fetchSessions = async () => {
+      const supabase = getSupabase()
+      const { data } = await supabase
+        .from("call_sessions")
+        .select("id, openphone_call_id, recording_url, transcript, duration_sec")
+        .eq("project_id", projectId)
+      if (data) setCallSessions(data as CallSession[])
     }
-    
-    const count = reviewRange === "last20" ? 20 : reviewRange === "last50" ? 50 : 100
-    filteredAttempts = filteredAttempts.slice(0, count)
-    
-    setAttemptsToReview(filteredAttempts.map(a => ({ ...a, rating: null })))
-    setCurrentStep("review")
-    setCurrentPage(0)
+    fetchSessions()
+  }, [projectId])
+
+  // Reset form when switching calls
+  const resetForm = () => {
+    setSelectedTags([])
+    setMarketInsight("")
+    setPromoteToPlaybook(false)
+    setScores({ opening: 3, discovery: 3, control: 3, objections: 3, close: 3, nextStep: 3 })
+    setWhatWorked("")
+    setWhatFailed("")
+    setCoachingNotes("")
   }
 
-  const rateAttempt = (attemptId: string, rating: ReviewRating) => {
-    setAttemptsToReview(attemptsToReview.map(a => 
-      a.id === attemptId ? { ...a, rating } : a
-    ))
-  }
-
-  const currentPageAttempts = attemptsToReview.slice(
-    currentPage * attemptsPerPage,
-    (currentPage + 1) * attemptsPerPage
-  )
-
-  const totalPages = Math.ceil(attemptsToReview.length / attemptsPerPage)
-  const ratedCount = attemptsToReview.filter(a => a.rating !== null).length
-  const topCount = attemptsToReview.filter(a => a.rating === "top").length
-  const bottomCount = attemptsToReview.filter(a => a.rating === "bottom").length
-
-  const goToSummary = () => {
-    setCurrentStep("summary")
-  }
-
-  const goToLearnings = () => {
-    setCurrentStep("learnings")
-  }
-
-  const addProposedRule = () => {
-    if (!newRuleText.trim()) return
-    setProposedRules([...proposedRules, {
-      ifWhen: newRuleText,
-      then: "",
-      because: "",
-      confidence: "Low"
-    }])
-    setNewRuleText("")
-  }
-
-  const finishReview = () => {
-    setCurrentStep("complete")
-  }
-
-  const topAttempts = attemptsToReview.filter(a => a.rating === "top")
-  const bottomAttempts = attemptsToReview.filter(a => a.rating === "bottom")
-  
-  const metrics = calculateMetrics(attemptsToReview)
-  const topFailureReasons = getTopFailureReasons(attemptsToReview)
-
-  // Setup step
-  if (currentStep === "setup") {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <Topbar title="Batch Review" />
-        <div className="flex-1 p-6 flex items-center justify-center">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Start Batch Review</CardTitle>
-              <CardDescription>Select attempts to review and analyze</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-2">
-                <Label>Review Range</Label>
-                <Select
-                  value={reviewRange}
-                  onValueChange={(value: "last20" | "last50" | "custom") => setReviewRange(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="last20">Last 20 attempts</SelectItem>
-                    <SelectItem value="last50">Last 50 attempts</SelectItem>
-                    <SelectItem value="custom">Last 100 attempts</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid gap-2">
-                <Label>Filter by Experiment</Label>
-                <Select
-                  value={experimentFilter}
-                  onValueChange={setExperimentFilter}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="All experiments" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All experiments</SelectItem>
-                    {experiments.map(exp => (
-                      <SelectItem key={exp.id} value={exp.id}>
-                        {exp.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground mb-2">Total attempts available:</p>
-                <p className="text-2xl font-bold">{allAttempts.length}</p>
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1 bg-transparent" onClick={() => router.push("/")}>
-                  Cancel
-                </Button>
-                <Button className="flex-1" onClick={startReview}>
-                  <Play className="mr-2 h-4 w-4" />
-                  Start Review
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
     )
   }
 
-  // Review step
-  if (currentStep === "review") {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <Topbar 
-          title="Batch Review" 
-          actions={
-            <Button onClick={goToSummary}>
-              Go to Summary
-              <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
-          }
-        />
+  const handleQuickSubmit = async () => {
+    if (!currentCall) return
+    await saveQuickReview({
+      attemptId: currentCall.attempt.id,
+      callSessionId: currentCall.session?.id,
+      tags: selectedTags,
+      marketInsight: marketInsight || undefined,
+      promoteToPlaybook,
+    })
+    setReviewedIds((prev) => new Set(prev).add(currentCall.attempt.id))
+    resetForm()
+    setCurrentIndex((prev) => Math.min(prev, reviewableCalls.length - 2))
+  }
 
-        <div className="flex-1 p-6">
-          {/* Progress */}
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Review Progress</p>
-                  <p className="text-2xl font-bold">{ratedCount} / {attemptsToReview.length} rated</p>
-                </div>
-                <div className="flex gap-4">
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-green-600">{topCount}</p>
-                    <p className="text-xs text-muted-foreground">Top</p>
+  const handleDeepSubmit = async () => {
+    if (!currentCall) return
+    await saveDeepReview({
+      attemptId: currentCall.attempt.id,
+      callSessionId: currentCall.session?.id,
+      scoreOpening: scores.opening,
+      scoreDiscovery: scores.discovery,
+      scoreControl: scores.control,
+      scoreObjections: scores.objections,
+      scoreClose: scores.close,
+      scoreNextStep: scores.nextStep,
+      whatWorked: whatWorked || undefined,
+      whatFailed: whatFailed || undefined,
+      coachingNotes: coachingNotes || undefined,
+    })
+    setReviewedIds((prev) => new Set(prev).add(currentCall.attempt.id))
+    resetForm()
+    setCurrentIndex((prev) => Math.min(prev, reviewableCalls.length - 2))
+  }
+
+  const handleSkip = () => {
+    resetForm()
+    setCurrentIndex((prev) => Math.min(prev + 1, reviewableCalls.length - 1))
+  }
+
+  const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
+  const maxScore = RUBRIC_DIMENSIONS.length * 5
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Topbar
+        title="Call Review"
+        actions={
+          <Badge variant="outline" className="text-sm">
+            {reviewableCalls.length} calls to review
+          </Badge>
+        }
+      />
+
+      <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "quick" | "deep")} className="space-y-6">
+          <div className="flex items-center justify-between">
+            <TabsList className="grid grid-cols-2 w-80">
+              <TabsTrigger value="quick" className="gap-2">
+                <Zap className="h-4 w-4" />
+                Quick Batch
+              </TabsTrigger>
+              <TabsTrigger value="deep" className="gap-2">
+                <BookOpen className="h-4 w-4" />
+                Deep Dive
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="tabular-nums font-medium">
+                {currentIndex + 1} / {reviewableCalls.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Call Card — shared between tabs */}
+          {currentCall ? (
+            <Card className="mb-4">
+              <CardContent className="pt-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-lg">
+                      {currentCall.lead?.company || "Unknown Company"}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {currentCall.lead?.contactName || "Unknown"} ·{" "}
+                      {new Date(currentCall.attempt.timestamp).toLocaleDateString()} ·{" "}
+                      {currentCall.session?.duration_sec
+                        ? `${Math.round(currentCall.session.duration_sec / 60)}min`
+                        : "No duration"}
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge
+                        variant={
+                          currentCall.attempt.outcome === "Meeting set"
+                            ? "default"
+                            : currentCall.attempt.outcome?.includes("interest")
+                              ? "secondary"
+                              : "outline"
+                        }
+                      >
+                        {currentCall.attempt.outcome}
+                      </Badge>
+                      {currentCall.attempt.why && (
+                        <Badge variant="outline">{currentCall.attempt.why}</Badge>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-red-600">{bottomCount}</p>
-                    <p className="text-xs text-muted-foreground">Bottom</p>
-                  </div>
+
+                  {/* Audio Player (if recording available) */}
+                  {currentCall.session?.recording_url && (
+                    <div className="flex items-center gap-2">
+                      <audio
+                        controls
+                        src={currentCall.session.recording_url}
+                        className="h-8"
+                        preload="none"
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
-              <Progress value={(ratedCount / attemptsToReview.length) * 100} className="h-2" />
-            </CardContent>
-          </Card>
 
-          {/* Attempts to review */}
-          <div className="space-y-4 mb-6">
-            {currentPageAttempts.map((attempt) => {
-              const lead = allLeads.find(l => l.id === attempt.leadId)
-              const experiment = attempt.experimentTag ? experiments.find(e => e.id === attempt.experimentTag) : null
-              const isExpanded = expandedAttemptId === attempt.id
-              
-              return (
-                <Card key={attempt.id} className={
-                  attempt.rating === "top" ? "border-green-500 bg-green-50" :
-                  attempt.rating === "bottom" ? "border-red-500 bg-red-50" :
-                  attempt.rating === "skip" ? "opacity-50" : ""
-                }>
-                  <CardContent className="pt-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">{lead?.company || "Unknown"}</span>
-                          <Badge className={getOutcomeColor(attempt.outcome)}>{attempt.outcome}</Badge>
-                          {experiment && (
-                            <Badge variant="outline">{experiment.name}</Badge>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
-                          {lead && (
-                            <span>{lead.segment}</span>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(attempt.timestamp).toLocaleDateString()}
-                          </span>
-                        </div>
+                {/* Transcript */}
+                {currentCall.session?.transcript && (
+                  <div className="mt-4 p-3 bg-muted rounded-lg max-h-48 overflow-y-auto">
+                    <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" />
+                      Transcript
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap">{currentCall.session.transcript}</p>
+                  </div>
+                )}
 
-                        {attempt.why && (
-                          <p className="text-sm text-red-600 mb-2">
-                            <AlertTriangle className="h-3 w-3 inline mr-1" />
-                            {attempt.why}
-                            {attempt.repMistake && ` - ${attempt.repMistake}`}
-                          </p>
-                        )}
+                {/* Notes from attempt */}
+                {currentCall.attempt.notes && (
+                  <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Rep Notes</p>
+                    <p className="text-sm">{currentCall.attempt.notes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <Check className="h-12 w-12 text-green-500 mx-auto mb-3" />
+                <h3 className="text-lg font-semibold">All Caught Up!</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  No more calls to review. Come back after your next session.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-                        {/* Expandable details */}
-                        <button 
-                          className="text-sm text-primary flex items-center gap-1"
-                          onClick={() => setExpandedAttemptId(isExpanded ? null : attempt.id)}
+          {/* ─── Quick Batch Tab ─── */}
+          <TabsContent value="quick" className="mt-0 space-y-4">
+            {currentCall && (
+              <>
+                {/* Tags */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Tag This Call</CardTitle>
+                    <CardDescription>Select all that apply — builds your pattern library</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {QUICK_TAGS.map((tag) => (
+                        <button
+                          key={tag.value}
+                          type="button"
+                          onClick={() => toggleTag(tag.value)}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selectedTags.includes(tag.value)
+                              ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                            }`}
                         >
-                          {isExpanded ? "Hide details" : "Show details"}
-                          {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          {tag.label}
                         </button>
-
-                        {isExpanded && (
-                          <div className="mt-3 p-3 bg-muted/50 rounded-lg space-y-2 text-sm">
-                            {attempt.note && <p><strong>Notes:</strong> {attempt.note}</p>}
-                            {attempt.mattersMost && <p><strong>What mattered:</strong> {attempt.mattersMost}</p>}
-                            <p><strong>Next action:</strong> {attempt.nextAction}</p>
-                            {attempt.recordingUrl && (
-                              <div className="pt-2">
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Recording</p>
-                                <audio controls className="w-full h-8" src={attempt.recordingUrl}>
-                                  <track kind="captions" />
-                                </audio>
-                              </div>
-                            )}
-                            {attempt.callTranscriptText && (
-                              <div className="pt-2">
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Transcript</p>
-                                <div className="text-xs bg-background p-2 rounded whitespace-pre-wrap max-h-40 overflow-y-auto">
-                                  {attempt.callTranscriptText}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Rating buttons */}
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          size="sm"
-                          variant={attempt.rating === "top" ? "default" : "outline"}
-                          className={attempt.rating === "top" ? "bg-green-600 hover:bg-green-700" : ""}
-                          onClick={() => rateAttempt(attempt.id, attempt.rating === "top" ? null : "top")}
-                        >
-                          <ThumbsUp className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={attempt.rating === "bottom" ? "default" : "outline"}
-                          className={attempt.rating === "bottom" ? "bg-red-600 hover:bg-red-700" : ""}
-                          onClick={() => rateAttempt(attempt.id, attempt.rating === "bottom" ? null : "bottom")}
-                        >
-                          <ThumbsDown className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={attempt.rating === "skip" ? "secondary" : "ghost"}
-                          onClick={() => rateAttempt(attempt.id, attempt.rating === "skip" ? null : "skip")}
-                        >
-                          <SkipForward className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
-              )
-            })}
-          </div>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-center gap-4">
-            <Button
-              variant="outline"
-              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-              disabled={currentPage === 0}
-            >
-              <ChevronLeft className="mr-2 h-4 w-4" />
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage + 1} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-              disabled={currentPage >= totalPages - 1}
-            >
-              Next
-              <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+                {/* Market Insight + Promote */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-cyan-500" />
+                        Market Insight
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        placeholder="Any market intel from this call? Competitor mentions, budget timing, industry trends..."
+                        value={marketInsight}
+                        onChange={(e) => setMarketInsight(e.target.value)}
+                        className="resize-none"
+                        rows={3}
+                      />
+                    </CardContent>
+                  </Card>
 
-  // Summary step
-  if (currentStep === "summary") {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <Topbar 
-          title="Review Summary" 
-          actions={
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setCurrentStep("review")}>
-                <ChevronLeft className="mr-2 h-4 w-4" />
-                Back to Review
-              </Button>
-              <Button onClick={goToLearnings}>
-                Continue to Learnings
-                <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          }
-        />
-
-        <div className="flex-1 p-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Metrics */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Session Metrics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-2xl font-bold">{metrics.connectRate}%</p>
-                    <p className="text-sm text-muted-foreground">Connect Rate</p>
-                  </div>
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-2xl font-bold">{metrics.dmReachRate}%</p>
-                    <p className="text-sm text-muted-foreground">DM Reach Rate</p>
-                  </div>
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-2xl font-bold">{metrics.interestRate}%</p>
-                    <p className="text-sm text-muted-foreground">Interest Rate</p>
-                  </div>
-                  <div className="p-4 bg-muted rounded-lg">
-                    <p className="text-2xl font-bold text-green-600">{metrics.meetingsSet}</p>
-                    <p className="text-sm text-muted-foreground">Meetings Set</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Top Failure Reasons */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Top Failure Reasons</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {topFailureReasons.length > 0 ? (
-                  <div className="space-y-3">
-                    {topFailureReasons.slice(0, 5).map((item, i) => (
-                      <div key={item.reason} className="flex items-center justify-between">
-                        <span className="text-sm">{item.reason}</span>
-                        <Badge variant="secondary">{item.count}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No failure reasons recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Top Calls */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-green-600">Top Calls ({topCount})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-48">
-                  {topAttempts.length > 0 ? (
-                    <div className="space-y-2">
-                      {topAttempts.map(attempt => {
-                        const lead = allLeads.find(l => l.id === attempt.leadId)
-                        return (
-                          <div key={attempt.id} className="p-2 border rounded text-sm">
-                            <p className="font-medium">{lead?.company}</p>
-                            <p className="text-muted-foreground">{attempt.outcome}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No top calls marked</p>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* Bottom Calls */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-red-600">Bottom Calls ({bottomCount})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-48">
-                  {bottomAttempts.length > 0 ? (
-                    <div className="space-y-2">
-                      {bottomAttempts.map(attempt => {
-                        const lead = allLeads.find(l => l.id === attempt.leadId)
-                        return (
-                          <div key={attempt.id} className="p-2 border rounded text-sm">
-                            <p className="font-medium">{lead?.company}</p>
-                            <p className="text-muted-foreground">{attempt.why || attempt.outcome}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No bottom calls marked</p>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Learnings step
-  if (currentStep === "learnings") {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <Topbar 
-          title="Capture Learnings" 
-          actions={
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setCurrentStep("summary")}>
-                <ChevronLeft className="mr-2 h-4 w-4" />
-                Back
-              </Button>
-              <Button onClick={finishReview}>
-                <Check className="mr-2 h-4 w-4" />
-                Complete Review
-              </Button>
-            </div>
-          }
-        />
-
-        <div className="flex-1 p-6">
-          <div className="max-w-2xl mx-auto space-y-6">
-            {/* Learning Notes */}
-            <Card>
-              <CardHeader>
-                <CardTitle>What did you learn?</CardTitle>
-                <CardDescription>Capture key insights from this batch</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  value={learningNotes}
-                  onChange={(e) => setLearningNotes(e.target.value)}
-                  placeholder="What patterns did you notice? What worked? What didn't?"
-                  rows={5}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Proposed Rules */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Propose Rules</CardTitle>
-                <CardDescription>Turn learnings into actionable rules</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    value={newRuleText}
-                    onChange={(e) => setNewRuleText(e.target.value)}
-                    placeholder="If/When [situation], then [action]..."
-                    onKeyDown={(e) => e.key === "Enter" && addProposedRule()}
-                  />
-                  <Button onClick={addProposedRule}>Add</Button>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Star className="h-4 w-4 text-yellow-500" />
+                        Playbook
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <button
+                        type="button"
+                        onClick={() => setPromoteToPlaybook(!promoteToPlaybook)}
+                        className={`w-full p-4 rounded-lg border-2 text-left transition-all ${promoteToPlaybook
+                            ? "border-yellow-500 bg-yellow-500/5"
+                            : "border-border hover:border-yellow-500/40"
+                          }`}
+                      >
+                        <p className="font-medium text-sm">
+                          {promoteToPlaybook ? "✓ Marked for Playbook" : "Promote to Playbook?"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Flag this call as a learning moment to review later
+                        </p>
+                      </button>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                {proposedRules.length > 0 && (
-                  <div className="space-y-2">
-                    {proposedRules.map((rule, i) => (
-                      <div key={i} className="p-3 border rounded-lg">
-                        <p className="text-sm">{rule.ifWhen}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Assign Drill */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Assign a Drill</CardTitle>
-                <CardDescription>Practice a specific skill based on learnings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label>Select Drill</Label>
-                  <Select
-                    value={selectedDrill}
-                    onValueChange={setSelectedDrill}
+                {/* Quick Actions */}
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 bg-transparent"
+                    onClick={handleSkip}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a drill (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {drills.map(drill => (
-                        <SelectItem key={drill.id} value={drill.id}>
-                          {drill.name} - {drill.triggerType}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <SkipForward className="mr-2 h-4 w-4" />
+                    Skip
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleQuickSubmit}
+                    disabled={saving || selectedTags.length === 0}
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    Tag & Next
+                  </Button>
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* ─── Deep Dive Tab ─── */}
+          <TabsContent value="deep" className="mt-0 space-y-4">
+            {currentCall && (
+              <>
+                {/* Rubric Scoring */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span>Rubric Score</span>
+                      <span className="tabular-nums text-lg">
+                        {totalScore} / {maxScore}
+                      </span>
+                    </CardTitle>
+                    <CardDescription>Rate each dimension 1-5</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    {RUBRIC_DIMENSIONS.map((dim) => (
+                      <div key={dim.key}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <Label className="font-medium">{dim.label}</Label>
+                            <p className="text-xs text-muted-foreground">{dim.description}</p>
+                          </div>
+                          <span className="text-xl font-bold tabular-nums w-8 text-right">
+                            {scores[dim.key]}
+                          </span>
+                        </div>
+                        <Slider
+                          min={1}
+                          max={5}
+                          step={1}
+                          value={[scores[dim.key]]}
+                          onValueChange={(v) =>
+                            setScores((prev) => ({ ...prev, [dim.key]: v[0] }))
+                          }
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                          <span>Poor</span>
+                          <span>Average</span>
+                          <span>Excellent</span>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Coaching Notes */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-green-600">What Worked</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        value={whatWorked}
+                        onChange={(e) => setWhatWorked(e.target.value)}
+                        placeholder="Strengths in this call..."
+                        rows={4}
+                        className="resize-none"
+                      />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-red-600">What Failed</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        value={whatFailed}
+                        onChange={(e) => setWhatFailed(e.target.value)}
+                        placeholder="Areas to improve..."
+                        rows={4}
+                        className="resize-none"
+                      />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-blue-600">Coaching Notes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        value={coachingNotes}
+                        onChange={(e) => setCoachingNotes(e.target.value)}
+                        placeholder="Key takeaways, drills to run..."
+                        rows={4}
+                        className="resize-none"
+                      />
+                    </CardContent>
+                  </Card>
                 </div>
 
-                {selectedDrill && (
-                  <div className="grid gap-2">
-                    <Label>Duration (calls)</Label>
-                    <Select
-                      value={drillDuration.toString()}
-                      onValueChange={(value) => setDrillDuration(parseInt(value))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 calls</SelectItem>
-                        <SelectItem value="10">10 calls</SelectItem>
-                        <SelectItem value="15">15 calls</SelectItem>
-                        <SelectItem value="20">20 calls</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Complete step
-  return (
-    <div className="flex flex-col min-h-screen">
-      <Topbar title="Review Complete" />
-      <div className="flex-1 p-6 flex items-center justify-center">
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="pt-6">
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-              <Check className="h-8 w-8 text-green-600" />
-            </div>
-            <h2 className="text-xl font-bold mb-2">Batch Review Complete</h2>
-            <p className="text-muted-foreground mb-6">
-              Reviewed {attemptsToReview.length} attempts, marked {topCount} top and {bottomCount} bottom calls.
-            </p>
-            <div className="flex gap-2 justify-center">
-              <Button variant="outline" onClick={() => router.push("/playbook")}>
-                View Playbook
-              </Button>
-              <Button onClick={() => router.push("/")}>
-                Back to Leads
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                {/* Deep Actions */}
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 bg-transparent"
+                    onClick={handleSkip}
+                  >
+                    <SkipForward className="mr-2 h-4 w-4" />
+                    Skip
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleDeepSubmit}
+                    disabled={saving}
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    Save Deep Review
+                  </Button>
+                </div>
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
