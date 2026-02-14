@@ -146,8 +146,24 @@ The sidebar must always contain these items in this order:
 6. Settings (`/settings` — pipeline, automation, profile)
 7. Admin (`/admin` — user management, admin-only)
 
+### Debugging Protocol (MANDATORY)
+
+When fixing bugs, follow `.agent/workflows/fix.md`. Key rules:
+
+1. **Severity First** — Classify as Level 1–5. Fix Level 5 (core UX broken) before touching anything else. NEVER merge branches, refactor, or do housekeeping during an active bug.
+2. **Query Before You Fix** — Run a diagnostic query that proves your hypothesis. If it doesn't confirm, re-diagnose. Do NOT write code until the root cause is proven.
+3. **Trace the Data Path** — For "X doesn't show" bugs, trace: `DB Table → View/JOIN → RLS → API Query → Hook → Component`. Find the exact broken link.
+4. **One Fix, One Verify** — After every fix, verify with the same diagnostic query. If the bug persists, the fix was wrong — go back to diagnosis. Do NOT move on.
+5. **No Side Quests** — Do not merge branches, create docs, investigate tooling, or fix "related" issues until the reported bug is confirmed fixed.
+
+**Supabase-specific**: If data exists in DB but not in UI, check in this order:
+- `project_id` is NOT NULL (RLS hides NULL project_id records)
+- JOINs are intact (e.g., `call_sessions.attempt_id` links to `attempts.id`)
+- The hook filters by the correct `project_id`
+
 ### Known Gotchas
 - `REVOKE SELECT ON users FROM anon` was applied in migration `000000`. Admin policies and `updateUser` may conflict with this. Profile updates use direct table UPDATE which requires RLS UPDATE policy.
 - The `/debug` page is accessible in production (no auth gate). Consider removing or protecting.
 - Seed script (`scripts/seed-users.ts`) requires `DATABASE_URL` pointing to the remote Supabase database, not localhost.
 - Supabase client is a singleton; call `resetSupabaseClient()` after login/logout to pick up the new session token header.
+- **Call recordings**: `v_attempts_enriched` joins `call_sessions` on `attempt_id`. If `attempt_id` is NULL, recordings/transcripts won't show. The webhook creates call_sessions separately — they must be linked to attempts via phone number + timestamp matching.
