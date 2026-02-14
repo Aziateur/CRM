@@ -20,6 +20,7 @@ export interface QuickReviewInput {
     tags: string[]
     marketInsight?: string
     promoteToPlaybook: boolean
+    evidenceVerified: boolean
 }
 
 export interface DeepReviewInput {
@@ -29,6 +30,7 @@ export interface DeepReviewInput {
     templateVersion: number
     responses: Record<string, unknown>        // field_key → value (score number, text string, etc.)
     evidenceSnippets?: EvidenceSnippet[]
+    evidenceVerified: boolean
 }
 
 // Legacy deep review input (backward compat during transition)
@@ -68,6 +70,7 @@ export function useCallReviews() {
                             tags: input.tags,
                             market_insight: input.marketInsight || null,
                             promote_to_playbook: input.promoteToPlaybook,
+                            evidence_verified: input.evidenceVerified,
                             project_id: projectId,
                         },
                     ])
@@ -131,6 +134,7 @@ export function useCallReviews() {
                             template_version: input.templateVersion,
                             responses: input.responses,
                             evidence_snippets: input.evidenceSnippets ?? [],
+                            evidence_verified: input.evidenceVerified,
                             ...legacyScores,
                             project_id: projectId,
                         },

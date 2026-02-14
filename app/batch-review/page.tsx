@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,8 @@ import {
   MessageSquare,
   Quote,
   X,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useLeads } from "@/hooks/use-leads"
@@ -219,6 +221,9 @@ export default function ReviewPage() {
   const [responses, setResponses] = useState<Record<string, unknown>>({})
   const [evidenceSnippets, setEvidenceSnippets] = useState<EvidenceSnippet[]>([])
 
+  // Evidence gating state
+  const [showUnverifiedConfirm, setShowUnverifiedConfirm] = useState(false)
+
   // Initialize responses when template loads or call changes
   useEffect(() => {
     if (!activeDeepTemplate) return
@@ -261,6 +266,11 @@ export default function ReviewPage() {
 
   const currentCall = reviewableCalls[currentIndex] || null
 
+  // ─── Evidence readiness ───
+  const hasEvidence = Boolean(
+    currentCall?.session?.recording_url || currentCall?.session?.transcript_text,
+  )
+
   // Fetch call sessions (view inherits project scope via call_sessions.project_id)
   useEffect(() => {
     if (!projectId) return
@@ -279,11 +289,50 @@ export default function ReviewPage() {
     fetchSessions()
   }, [projectId, attempts])
 
+  // Auto-refresh evidence for the current call (polls every 10s when evidence is missing)
+  useEffect(() => {
+    if (!currentCall || hasEvidence) return
+    const attemptId = currentCall.attempt.id
+    if (!attemptId) return
+
+    const poll = async () => {
+      try {
+        const supabase = getSupabase()
+        const { data } = await supabase
+          .from("v_calls_with_artifacts")
+          .select("call_session_id, attempt_id, recording_url, transcript_text")
+          .eq("attempt_id", attemptId)
+          .maybeSingle()
+
+        if (data && (data.recording_url || data.transcript_text)) {
+          setCallSessions((prev) => {
+            const existing = prev.findIndex((s) => s.attempt_id === attemptId)
+            const updated = data as CallSession
+            if (existing >= 0) {
+              const next = [...prev]
+              next[existing] = updated
+              return next
+            }
+            return [...prev, updated]
+          })
+        }
+      } catch (err) {
+        console.warn("[ReviewPage] Evidence poll error:", err)
+      }
+    }
+
+    const intervalId = setInterval(poll, 10_000)
+    // Also poll immediately once
+    poll()
+    return () => clearInterval(intervalId)
+  }, [currentCall?.attempt.id, hasEvidence]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Reset form
   const resetForm = () => {
     setSelectedTags([])
     setMarketInsight("")
     setPromoteToPlaybook(false)
+    setShowUnverifiedConfirm(false)
     // Deep responses reset handled by useEffect on currentIndex change
   }
 
@@ -301,6 +350,7 @@ export default function ReviewPage() {
       tags: selectedTags,
       marketInsight: marketInsight || undefined,
       promoteToPlaybook,
+      evidenceVerified: hasEvidence,
     })
     setReviewedIds((prev) => new Set(prev).add(currentCall.attempt.id))
     resetForm()
@@ -309,6 +359,11 @@ export default function ReviewPage() {
 
   const handleDeepSubmit = async () => {
     if (!currentCall || !activeDeepTemplate) return
+    // Gate: require explicit confirmation if no evidence
+    if (!hasEvidence && !showUnverifiedConfirm) {
+      setShowUnverifiedConfirm(true)
+      return
+    }
     await saveDeepReview({
       attemptId: currentCall.attempt.id,
       callSessionId: currentCall.session?.call_session_id,
@@ -316,6 +371,7 @@ export default function ReviewPage() {
       templateVersion: activeDeepTemplate.version,
       responses,
       evidenceSnippets,
+      evidenceVerified: hasEvidence,
     })
     setReviewedIds((prev) => new Set(prev).add(currentCall.attempt.id))
     resetForm()
@@ -550,6 +606,19 @@ export default function ReviewPage() {
                   </Card>
                 </div>
 
+                {/* Evidence warning — Quick Batch */}
+                {!hasEvidence && currentCall && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50/50 text-sm">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium text-amber-800">No recording or transcript available</p>
+                      <p className="text-amber-600 text-xs mt-0.5">
+                        This review will be marked as <span className="font-semibold">Unverified</span> — scored from memory, not evidence.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
                     <SkipForward className="mr-2 h-4 w-4" />
@@ -723,6 +792,36 @@ export default function ReviewPage() {
                   </Card>
                 ))}
 
+                {/* Evidence warning — Deep Dive */}
+                {!hasEvidence && currentCall && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg border border-red-300 bg-red-50/50 text-sm">
+                    <ShieldAlert className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium text-red-800">Evidence required for Deep Dive</p>
+                      <p className="text-red-600 text-xs mt-0.5">
+                        No recording or transcript — scoring without evidence contaminates analytics.
+                        You can still submit, but the review will be marked <span className="font-semibold">Unverified</span>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Unverified confirmation */}
+                {showUnverifiedConfirm && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border-2 border-red-400 bg-red-50">
+                    <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+                    <p className="text-sm text-red-800 flex-1">Are you sure? This Deep Dive will be saved as <strong>Unverified</strong>.</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setShowUnverifiedConfirm(false)} className="text-xs h-7">
+                        Cancel
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={handleDeepSubmit} className="text-xs h-7">
+                        Submit Unverified
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Deep Actions */}
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
@@ -731,7 +830,7 @@ export default function ReviewPage() {
                   </Button>
                   <Button className="flex-1" onClick={handleDeepSubmit} disabled={saving}>
                     <Check className="mr-2 h-4 w-4" />
-                    Save Deep Review
+                    {hasEvidence ? "Save Deep Review" : "Submit as Unverified…"}
                   </Button>
                 </div>
               </>
