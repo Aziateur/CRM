@@ -46,31 +46,34 @@ export function AppSidebar() {
   const { user, logout } = useAuth()
   const pathname = usePathname()
 
-  const menuItems = [
+  const primaryItems = [
     {
       title: "Leads",
       url: "/",
       icon: Users,
     },
     {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
+      title: "Dialer",
+      url: "/dial-session",
+      icon: Phone,
+    },
+    {
+      title: "Review",
+      url: "/batch-review",
+      icon: Repeat,
     },
     {
       title: "Playbook",
       url: "/playbook",
       icon: BookOpen,
     },
+  ]
+
+  const secondaryItems = [
     {
-      title: "Dial Session",
-      url: "/dial-session",
-      icon: Phone,
-    },
-    {
-      title: "Batch Review",
-      url: "/batch-review",
-      icon: Repeat,
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: LayoutDashboard,
     },
     {
       title: "Settings",
@@ -80,7 +83,7 @@ export function AppSidebar() {
   ]
 
   if (user?.system_role === "admin") {
-    menuItems.push({
+    secondaryItems.push({
       title: "Admin",
       url: "/admin",
       icon: Shield,
@@ -91,10 +94,30 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Sales CRM</SidebarGroupLabel>
+          <SidebarGroupLabel>Workflow</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {primaryItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={pathname === item.url}
+                  >
+                    <Link href={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Tools</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {secondaryItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild

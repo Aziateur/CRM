@@ -111,7 +111,7 @@ export default function ReviewPage() {
       .map((attempt) => ({
         attempt,
         lead: leadMap.get(attempt.leadId) || null,
-        session: attempt.callSessionId ? sessionMap.get(attempt.callSessionId) || null : null,
+        session: attempt.sessionId ? sessionMap.get(attempt.sessionId) || null : null,
       }))
   }, [attempts, leads, callSessions, reviewedIds])
 
@@ -233,7 +233,7 @@ export default function ReviewPage() {
                       {currentCall.lead?.company || "Unknown Company"}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {currentCall.lead?.contactName || "Unknown"} ·{" "}
+                      {currentCall.lead?.contacts?.[0]?.name || "Unknown"} ·{" "}
                       {new Date(currentCall.attempt.timestamp).toLocaleDateString()} ·{" "}
                       {currentCall.session?.duration_sec
                         ? `${Math.round(currentCall.session.duration_sec / 60)}min`
@@ -282,10 +282,10 @@ export default function ReviewPage() {
                 )}
 
                 {/* Notes from attempt */}
-                {currentCall.attempt.notes && (
+                {currentCall.attempt.note && (
                   <div className="mt-3 p-3 bg-muted/50 rounded-lg">
                     <p className="text-xs font-medium text-muted-foreground mb-1">Rep Notes</p>
-                    <p className="text-sm">{currentCall.attempt.notes}</p>
+                    <p className="text-sm">{currentCall.attempt.note}</p>
                   </div>
                 )}
               </CardContent>
@@ -320,8 +320,8 @@ export default function ReviewPage() {
                           type="button"
                           onClick={() => toggleTag(tag.value)}
                           className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selectedTags.includes(tag.value)
-                              ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                            ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
                             }`}
                         >
                           {tag.label}
@@ -363,8 +363,8 @@ export default function ReviewPage() {
                         type="button"
                         onClick={() => setPromoteToPlaybook(!promoteToPlaybook)}
                         className={`w-full p-4 rounded-lg border-2 text-left transition-all ${promoteToPlaybook
-                            ? "border-yellow-500 bg-yellow-500/5"
-                            : "border-border hover:border-yellow-500/40"
+                          ? "border-yellow-500 bg-yellow-500/5"
+                          : "border-border hover:border-yellow-500/40"
                           }`}
                       >
                         <p className="font-medium text-sm">
