@@ -33,6 +33,7 @@ export interface ReviewTemplate {
     description: string | null
     version: number
     isActive: boolean
+    isLocked: boolean
     appliesTo: "quick" | "deep" | "both"
     fields: ReviewField[]
 }
@@ -100,6 +101,7 @@ export function useReviewTemplates() {
                 description: (t.description ?? null) as string | null,
                 version: (t.version ?? 1) as number,
                 isActive: (t.is_active ?? true) as boolean,
+                isLocked: (t.is_locked ?? false) as boolean,
                 appliesTo: (t.applies_to ?? "deep") as ReviewTemplate["appliesTo"],
                 fields: fieldsByTemplate.get(t.id as string) ?? [],
             })),
@@ -121,7 +123,54 @@ export function useReviewTemplates() {
             const supabase = getSupabase()
 
             if (template.id) {
-                // Update existing
+                // Check if this template is locked (used in at least one review)
+                const existing = templates.find((t) => t.id === template.id)
+                if (existing?.isLocked) {
+                    // ─── VERSION BUMP: create new version, deactivate old ───
+                    const newVersion = existing.version + 1
+
+                    // Deactivate old version
+                    await supabase
+                        .from("review_templates")
+                        .update({ is_active: false, updated_at: new Date().toISOString() })
+                        .eq("id", template.id)
+
+                    // Create new version
+                    const { data } = await supabase
+                        .from("review_templates")
+                        .insert({
+                            name: template.name,
+                            description: template.description,
+                            version: newVersion,
+                            is_active: true,
+                            applies_to: template.appliesTo,
+                            project_id: projectId,
+                        })
+                        .select("id")
+                        .single()
+
+                    if (!data) return null
+                    const newId = (data as Record<string, unknown>).id as string
+
+                    if (fields.length > 0) {
+                        await supabase.from("review_fields").insert(
+                            fields.map((f, i) => ({
+                                template_id: newId,
+                                key: f.key,
+                                label: f.label,
+                                field_type: f.fieldType,
+                                section: f.section,
+                                config: f.config,
+                                sort_order: i,
+                                is_required: f.isRequired,
+                                project_id: projectId,
+                            })),
+                        )
+                    }
+                    return newId
+                }
+
+                // ─── UNLOCKED: in-place edit (current behavior) ───
                 await supabase
                     .from("review_templates")
                     .update({
@@ -190,7 +239,21 @@ export function useReviewTemplates() {
                 return newId
             }
         },
-        [projectId],
+        [projectId, templates],
+    )
+
+    // Soft-delete a template (deactivate)
+    const deleteTemplate = useCallback(
+        async (id: string) => {
+            if (!projectId) return
+            const supabase = getSupabase()
+            await supabase
+                .from("review_templates")
+                .update({ is_active: false, updated_at: new Date().toISOString() })
+                .eq("id", id)
+            await fetchTemplates()
+        },
+        [projectId, fetchTemplates],
     )
 
     // Get the active deep template (first one)
@@ -198,5 +261,5 @@ export function useReviewTemplates() {
         (t) => (t.appliesTo === "deep" || t.appliesTo === "both") && t.isActive,
     ) ?? null
 
-    return { templates, activeDeepTemplate, loading, saveTemplate, refetch: fetchTemplates }
+    return { templates, activeDeepTemplate, loading, saveTemplate, deleteTemplate, refetch: fetchTemplates }
 }

@@ -24,6 +24,8 @@ import {
     ChevronRight,
     Edit2,
     Copy,
+    Lock,
+    AlertTriangle,
 } from "lucide-react"
 
 // ─── Types ───
@@ -187,8 +189,10 @@ function FieldEditorRow({
 // ─── Main Component ───
 
 export function ReviewTemplatesTab() {
-    const { templates, saveTemplate, loading, refetch: refetchTemplates } = useReviewTemplates()
+    const { templates, saveTemplate, deleteTemplate, loading, refetch: refetchTemplates } = useReviewTemplates()
     const [editing, setEditing] = useState<string | null>(null) // template id or "new"
+    const [editingLocked, setEditingLocked] = useState(false) // is the template being edited locked?
+    const [editingVersion, setEditingVersion] = useState(1)
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
     const [appliesTo, setAppliesTo] = useState<"quick" | "deep" | "both">("deep")
@@ -197,6 +201,8 @@ export function ReviewTemplatesTab() {
 
     const startEdit = (tmpl: ReviewTemplate) => {
         setEditing(tmpl.id)
+        setEditingLocked(tmpl.isLocked)
+        setEditingVersion(tmpl.version)
         setName(tmpl.name)
         setDescription(tmpl.description ?? "")
         setAppliesTo(tmpl.appliesTo)
@@ -214,6 +220,8 @@ export function ReviewTemplatesTab() {
 
     const startNew = () => {
         setEditing("new")
+        setEditingLocked(false)
+        setEditingVersion(1)
         setName("")
         setDescription("")
         setAppliesTo("deep")
@@ -271,6 +279,7 @@ export function ReviewTemplatesTab() {
                     description: description || null,
                     version: 1,
                     isActive: true,
+                    isLocked: false,
                     appliesTo,
                 },
                 fields.map((f) => ({
@@ -332,6 +341,12 @@ export function ReviewTemplatesTab() {
                                         <Badge variant="outline" className="text-xs">
                                             {tmpl.appliesTo}
                                         </Badge>
+                                        {tmpl.isLocked && (
+                                            <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50 gap-1">
+                                                <Lock className="h-3 w-3" />
+                                                Locked
+                                            </Badge>
+                                        )}
                                     </div>
                                     <div className="flex gap-1">
                                         <Button
@@ -350,7 +365,20 @@ export function ReviewTemplatesTab() {
                                             className="h-7 gap-1 text-xs"
                                         >
                                             <Edit2 className="h-3.5 w-3.5" />
-                                            Edit
+                                            {tmpl.isLocked ? "New Version" : "Edit"}
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={async () => {
+                                                if (confirm(`Deactivate "${tmpl.name}"? Existing reviews will keep their data.`)) {
+                                                    await deleteTemplate(tmpl.id)
+                                                }
+                                            }}
+                                            className="h-7 gap-1 text-xs text-red-500 hover:text-red-700"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                            Delete
                                         </Button>
                                     </div>
                                 </div>
@@ -379,7 +407,7 @@ export function ReviewTemplatesTab() {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <h3 className="font-semibold">
-                    {editing === "new" ? "New Template" : `Edit: ${name}`}
+                    {editing === "new" ? "New Template" : editingLocked ? `New Version: ${name}` : `Edit: ${name}`}
                 </h3>
                 <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => setEditing(null)}>
@@ -387,10 +415,25 @@ export function ReviewTemplatesTab() {
                     </Button>
                     <Button size="sm" onClick={handleSave} disabled={saving || !name}>
                         <Save className="mr-1 h-4 w-4" />
-                        {saving ? "Saving..." : "Save Template"}
+                        {saving ? "Saving..." : editingLocked ? `Save as v${editingVersion + 1}` : "Save Template"}
                     </Button>
                 </div>
             </div>
+
+            {/* Version bump warning for locked templates */}
+            {editingLocked && (
+                <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50/50 text-sm">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-medium text-amber-800">
+                            This template is locked (used in reviews)
+                        </p>
+                        <p className="text-amber-600 text-xs mt-0.5">
+                            Saving will create <strong>v{editingVersion + 1}</strong> — the old version and its reviews remain untouched.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Meta */}
             <Card>
