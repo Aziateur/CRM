@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast"
 
 export type ActivityType =
   | "call"
+  | "call_session"
   | "email"
   | "sms"
   | "note"
@@ -14,6 +15,8 @@ export type ActivityType =
   | "field_change"
   | "task_created"
   | "task_completed"
+  | "contact_added"
+  | "contact_removed"
 
 export interface LeadActivity {
   id: string

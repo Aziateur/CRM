@@ -746,8 +746,9 @@ export function LeadDrawer({
                         <div key={activity.id} className="flex gap-3 text-sm">
                           <div className="shrink-0 mt-1">
                             {activity.activityType === "note" && <MessageSquare className="h-3.5 w-3.5 text-blue-500" />}
-                            {activity.activityType === "call" && <Phone className="h-3.5 w-3.5 text-green-500" />}
+                            {(activity.activityType === "call" || activity.activityType === "call_session") && <Phone className="h-3.5 w-3.5 text-green-500" />}
                             {activity.activityType === "stage_change" && <ChevronRight className="h-3.5 w-3.5 text-amber-500" />}
+                            {(activity.activityType === "contact_added" || activity.activityType === "contact_removed") && <Edit3 className="h-3.5 w-3.5 text-purple-500" />}
                             {activity.activityType === "tag_change" && <Edit3 className="h-3.5 w-3.5 text-indigo-500" />}
                             {activity.activityType === "field_change" && <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />}
                             {activity.activityType === "task_created" && <Clock className="h-3.5 w-3.5 text-blue-500" />}
