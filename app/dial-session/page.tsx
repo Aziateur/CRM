@@ -139,6 +139,11 @@ export default function DialSessionPage() {
   // Session start time for pace calc
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null)
 
+  // ─── Evidence Queue ───
+  const ENABLE_EVIDENCE_QUEUE = true
+  const [pendingEvidence, setPendingEvidence] = useState<Record<string, { addedAt: number; expiresAt: number }>>({})
+  const [callSessionMap, setCallSessionMap] = useState<Record<string, { openphone_call_id: string | null }>>({})
+
   // Current queue item
   const currentItem = queue[currentQueueIndex] || null
   const currentLead = currentItem?.lead || null
@@ -400,6 +405,14 @@ export default function DialSessionPage() {
       setSessionAttempts((prev) => [attempt, ...prev])
       setAllAttempts((prev) => [attempt, ...prev])
 
+      // Enqueue for background evidence polling
+      if (ENABLE_EVIDENCE_QUEUE) {
+        setPendingEvidence((prev) => ({
+          ...prev,
+          [data.id]: { addedAt: Date.now(), expiresAt: Date.now() + 180_000 },
+        }))
+      }
+
       // Auto-create follow-up task with user's chosen delay
       if (needsFollowUp && effectiveFollowUpDays) {
         const taskDef = getDefaultTaskForOutcome(selectedOutcome, selectedWhy || undefined, currentLead.company)
@@ -431,6 +444,90 @@ export default function DialSessionPage() {
       }
     }
   }
+
+  // ─── Background Evidence Poller ───
+  useEffect(() => {
+    if (!ENABLE_EVIDENCE_QUEUE) return
+    const pendingIds = Object.keys(pendingEvidence)
+    if (pendingIds.length === 0) return
+
+    const poll = async () => {
+      try {
+        const supabase = getSupabase()
+
+        // Batch query 1: enriched attempts (recording + transcript)
+        const { data: enriched } = await supabase
+          .from('v_attempts_enriched')
+          .select('id, call_recording_url, call_transcript_text')
+          .in('id', pendingIds)
+
+        // Batch query 2: call_sessions for openphone_call_id (Linking vs Pending)
+        const { data: sessions } = await supabase
+          .from('call_sessions')
+          .select('attempt_id, openphone_call_id')
+          .in('attempt_id', pendingIds)
+
+        // Update call session map
+        if (sessions) {
+          setCallSessionMap((prev) => {
+            const next = { ...prev }
+            for (const s of sessions) {
+              if (s.attempt_id) {
+                next[s.attempt_id] = { openphone_call_id: s.openphone_call_id }
+              }
+            }
+            return next
+          })
+        }
+
+        // Update attempts with arrived evidence
+        if (enriched) {
+          const updates = new Map<string, { recordingUrl?: string; callTranscriptText?: string }>()
+          for (const row of enriched) {
+            if (row.call_recording_url || row.call_transcript_text) {
+              updates.set(row.id, {
+                recordingUrl: row.call_recording_url || undefined,
+                callTranscriptText: row.call_transcript_text || undefined,
+              })
+            }
+          }
+
+          if (updates.size > 0) {
+            const updater = (prev: Attempt[]) =>
+              prev.map((a) => {
+                const u = updates.get(a.id)
+                return u ? { ...a, ...u } : a
+              })
+            setSessionAttempts(updater)
+            setAllAttempts(updater)
+          }
+        }
+
+        // Remove completed or expired items from pending
+        setPendingEvidence((prev) => {
+          const next = { ...prev }
+          const now = Date.now()
+          for (const id of Object.keys(next)) {
+            const hasEvidence = enriched?.some(
+              (r) => r.id === id && (r.call_recording_url || r.call_transcript_text)
+            )
+            if (hasEvidence || now >= next[id].expiresAt) {
+              delete next[id]
+            }
+          }
+          return next
+        })
+      } catch (err) {
+        console.warn('[evidence-queue] Poll error:', err)
+      }
+    }
+
+    const intervalId = setInterval(poll, 5000)
+    // Run immediately on first mount with pending items
+    poll()
+
+    return () => clearInterval(intervalId)
+  }, [ENABLE_EVIDENCE_QUEUE, Object.keys(pendingEvidence).join(',')])
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
