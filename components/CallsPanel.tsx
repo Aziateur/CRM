@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronDown, ChevronRight, Phone, Play } from "lucide-react"
 
 interface CallArtifact {
-  id: string
+  call_session_id: string
   created_at: string
   direction: string
   status: string
@@ -33,19 +33,35 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
     const fetchCalls = async () => {
       setLoading(true)
       const supabase = getSupabase()
-      
+
+      // Try lead_id first (reliable linkage), fall back to phone
       let query = supabase
         .from('v_calls_with_artifacts')
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (phone) {
-        query = query.eq('phone_e164', phone)
-      } else if (leadId) {
+      if (leadId) {
         query = query.eq('lead_id', leadId)
+      } else if (phone) {
+        query = query.eq('phone_e164', phone)
       }
 
       const { data, error } = await query
+
+      // If lead_id returned nothing and we have a phone, retry with phone
+      if (!error && (!data || data.length === 0) && leadId && phone) {
+        const { data: phoneData, error: phoneError } = await supabase
+          .from('v_calls_with_artifacts')
+          .select('*')
+          .eq('phone_e164', phone)
+          .order('created_at', { ascending: false })
+
+        if (!phoneError && phoneData) {
+          setCalls(phoneData)
+          setLoading(false)
+          return
+        }
+      }
 
       if (error) {
         console.error("Error fetching calls:", error)
@@ -66,14 +82,14 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Phone className="h-4 w-4" />
-          Call Recordings
+          Call Recordings ({calls.length})
         </CardTitle>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
           <div className="space-y-4">
             {calls.map((call) => (
-              <div key={call.id} className="border rounded-md p-3 bg-white shadow-sm">
+              <div key={call.call_session_id} className="border rounded-md p-3 bg-white shadow-sm">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex flex-col">
                     <span className="text-xs text-muted-foreground">
@@ -91,9 +107,9 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
                 {call.recording_url && (
                   <div className="mb-3">
                     <audio controls src={call.recording_url} className="w-full h-8" />
-                    <a 
-                      href={call.recording_url} 
-                      target="_blank" 
+                    <a
+                      href={call.recording_url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-1"
                     >
@@ -103,14 +119,14 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
                 )}
 
                 {call.transcript_text && (
-                  <Collapsible 
-                    open={openTranscriptId === call.id} 
-                    onOpenChange={() => setOpenTranscriptId(openTranscriptId === call.id ? null : call.id)}
+                  <Collapsible
+                    open={openTranscriptId === call.call_session_id}
+                    onOpenChange={() => setOpenTranscriptId(openTranscriptId === call.call_session_id ? null : call.call_session_id)}
                   >
                     <CollapsibleTrigger asChild>
                       <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                        {openTranscriptId === call.id ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        {openTranscriptId === call.id ? 'Hide Transcript' : 'Show Transcript'}
+                        {openTranscriptId === call.call_session_id ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        {openTranscriptId === call.call_session_id ? 'Hide Transcript' : 'Show Transcript'}
                       </button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-2">
