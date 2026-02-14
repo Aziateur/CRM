@@ -10,20 +10,20 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import {
-  Play,
-  Pause,
   SkipForward,
   Check,
-  ChevronRight,
   Star,
   AlertCircle,
   BookOpen,
   Zap,
   MessageSquare,
+  Quote,
+  X,
 } from "lucide-react"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useLeads } from "@/hooks/use-leads"
-import { useCallReviews } from "@/hooks/use-call-reviews"
+import { useCallReviews, type EvidenceSnippet } from "@/hooks/use-call-reviews"
+import { useReviewTemplates, type ReviewField } from "@/hooks/use-review-templates"
 import { getSupabase } from "@/lib/supabase"
 import { useProjectId } from "@/hooks/use-project-id"
 import type { Attempt, Lead } from "@/lib/store"
@@ -56,16 +56,144 @@ const QUICK_TAGS = [
   { value: "competitor_mention", label: "Competitor Mention", color: "bg-yellow-500/10 text-yellow-600" },
 ]
 
-// ─── Deep Dive Rubric ───
+// ─── Anchor Label Component ───
 
-const RUBRIC_DIMENSIONS = [
-  { key: "opening", label: "Opening", description: "Hook, pattern interrupt, tonality" },
-  { key: "discovery", label: "Discovery", description: "Questions, pain uncovering, listening" },
-  { key: "control", label: "Frame Control", description: "Directing conversation, pacing" },
-  { key: "objections", label: "Objection Handling", description: "Reframes, empathy, persistence" },
-  { key: "close", label: "Close Attempt", description: "Asked for commitment, urgency" },
-  { key: "nextStep", label: "Next Step Lock", description: "Calendar invite, clear follow-up" },
-] as const
+function AnchorLabel({ value, anchors }: { value: number; anchors?: Record<string, string> }) {
+  if (!anchors) return null
+  const label = anchors[String(value)]
+  if (!label) return null
+  return (
+    <p className="text-xs text-muted-foreground mt-1.5 p-2 bg-muted/50 rounded-md border border-border/50 italic leading-relaxed">
+      {label}
+    </p>
+  )
+}
+
+// ─── Evidence Quote Component ───
+
+function EvidenceQuoteField({
+  field,
+  transcriptText,
+  snippet,
+  onUpdate,
+}: {
+  field: ReviewField
+  transcriptText: string | null
+  snippet: EvidenceSnippet | undefined
+  onUpdate: (snippet: EvidenceSnippet | null) => void
+}) {
+  const [selecting, setSelecting] = useState(false)
+  const lines = useMemo(
+    () => (transcriptText ? transcriptText.split("\n").filter(Boolean) : []),
+    [transcriptText],
+  )
+  const [selectedLines, setSelectedLines] = useState<Set<number>>(
+    new Set(snippet?.transcriptLines ?? []),
+  )
+
+  const toggleLine = (idx: number) => {
+    setSelectedLines((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  const confirmSelection = () => {
+    const sortedLines = Array.from(selectedLines).sort((a, b) => a - b)
+    const text = sortedLines.map((i) => lines[i]).join("\n")
+    onUpdate({
+      fieldKey: field.key,
+      text,
+      transcriptLines: sortedLines,
+    })
+    setSelecting(false)
+  }
+
+  if (!transcriptText) {
+    return (
+      <div className="p-3 bg-muted/30 rounded-lg border border-dashed text-sm text-muted-foreground">
+        No transcript available — evidence quoting requires a transcript
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="font-medium flex items-center gap-1.5">
+          <Quote className="h-3.5 w-3.5 text-amber-500" />
+          {field.label}
+        </Label>
+        {!selecting && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSelecting(true)}
+            className="text-xs h-7"
+          >
+            {snippet ? "Re-select lines" : "Select from transcript"}
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {field.config.prompt || "Select transcript lines as evidence"}
+      </p>
+
+      {/* Current snippet */}
+      {snippet && !selecting && (
+        <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200 relative group">
+          <button
+            onClick={() => onUpdate(null)}
+            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <X className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+          <p className="text-sm whitespace-pre-wrap font-mono">{snippet.text}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Lines {snippet.transcriptLines?.join(", ")}
+          </p>
+        </div>
+      )}
+
+      {/* Line selector */}
+      {selecting && (
+        <div className="space-y-2">
+          <div className="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-0.5">
+            {lines.map((line, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => toggleLine(idx)}
+                className={`w-full text-left text-xs p-1.5 rounded transition-colors ${selectedLines.has(idx)
+                    ? "bg-amber-100 text-amber-900 font-medium"
+                    : "hover:bg-muted/50"
+                  }`}
+              >
+                <span className="text-muted-foreground font-mono mr-2">{idx + 1}</span>
+                {line}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setSelecting(false)} className="text-xs h-7">
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirmSelection}
+              disabled={selectedLines.size === 0}
+              className="text-xs h-7"
+            >
+              Attach {selectedLines.size} line{selectedLines.size !== 1 ? "s" : ""}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Page ───
 
@@ -74,6 +202,7 @@ export default function ReviewPage() {
   const { attempts } = useAttempts()
   const { leads } = useLeads()
   const { saveQuickReview, saveDeepReview, saving } = useCallReviews()
+  const { activeDeepTemplate, loading: templatesLoading } = useReviewTemplates()
 
   // State
   const [activeTab, setActiveTab] = useState<"quick" | "deep">("quick")
@@ -86,26 +215,35 @@ export default function ReviewPage() {
   const [marketInsight, setMarketInsight] = useState("")
   const [promoteToPlaybook, setPromoteToPlaybook] = useState(false)
 
-  // Deep review state
-  const [scores, setScores] = useState<Record<string, number>>({
-    opening: 3,
-    discovery: 3,
-    control: 3,
-    objections: 3,
-    close: 3,
-    nextStep: 3,
-  })
-  const [whatWorked, setWhatWorked] = useState("")
-  const [whatFailed, setWhatFailed] = useState("")
-  const [coachingNotes, setCoachingNotes] = useState("")
+  // Deep review state — template-driven
+  const [responses, setResponses] = useState<Record<string, unknown>>({})
+  const [evidenceSnippets, setEvidenceSnippets] = useState<EvidenceSnippet[]>([])
 
-  // Build reviewable calls — attempts with DM connection (actual conversations)
+  // Initialize responses when template loads or call changes
+  useEffect(() => {
+    if (!activeDeepTemplate) return
+    const defaults: Record<string, unknown> = {}
+    for (const field of activeDeepTemplate.fields) {
+      if (field.fieldType === "score") {
+        defaults[field.key] = Math.ceil(((field.config.min ?? 1) + (field.config.max ?? 5)) / 2)
+      } else if (field.fieldType === "text") {
+        defaults[field.key] = ""
+      } else if (field.fieldType === "multi_select") {
+        defaults[field.key] = []
+      } else if (field.fieldType === "checkbox") {
+        defaults[field.key] = false
+      }
+    }
+    setResponses(defaults)
+    setEvidenceSnippets([])
+  }, [activeDeepTemplate, currentIndex])
+
+  // Build reviewable calls
   const reviewableCalls = useMemo((): ReviewableCall[] => {
     const leadMap = new Map(leads.map((l) => [l.id, l]))
-    // Map sessions by both call_session_id AND attempt_id for flexible matching
     const sessionByIdMap = new Map(callSessions.map((s) => [s.call_session_id, s]))
     const sessionByAttemptMap = new Map(
-      callSessions.filter((s) => s.attempt_id).map((s) => [s.attempt_id!, s])
+      callSessions.filter((s) => s.attempt_id).map((s) => [s.attempt_id!, s]),
     )
 
     return attempts
@@ -114,20 +252,20 @@ export default function ReviewPage() {
       .map((attempt) => ({
         attempt,
         lead: leadMap.get(attempt.leadId) || null,
-        session: (attempt.sessionId ? sessionByIdMap.get(attempt.sessionId) : null)
-          || sessionByAttemptMap.get(attempt.id)
-          || null,
+        session:
+          (attempt.sessionId ? sessionByIdMap.get(attempt.sessionId) : null) ||
+          sessionByAttemptMap.get(attempt.id) ||
+          null,
       }))
   }, [attempts, leads, callSessions, reviewedIds])
 
   const currentCall = reviewableCalls[currentIndex] || null
 
-  // Fetch call sessions on mount
+  // Fetch call sessions
   useEffect(() => {
     if (!projectId) return
     const fetchSessions = async () => {
       const supabase = getSupabase()
-      // Use the view that extracts recordings + transcripts from webhook_events
       const { data } = await supabase
         .from("v_calls_with_artifacts")
         .select("call_session_id, attempt_id, recording_url, transcript_text")
@@ -136,15 +274,12 @@ export default function ReviewPage() {
     fetchSessions()
   }, [projectId])
 
-  // Reset form when switching calls
+  // Reset form
   const resetForm = () => {
     setSelectedTags([])
     setMarketInsight("")
     setPromoteToPlaybook(false)
-    setScores({ opening: 3, discovery: 3, control: 3, objections: 3, close: 3, nextStep: 3 })
-    setWhatWorked("")
-    setWhatFailed("")
-    setCoachingNotes("")
+    // Deep responses reset handled by useEffect on currentIndex change
   }
 
   const toggleTag = (tag: string) => {
@@ -168,19 +303,14 @@ export default function ReviewPage() {
   }
 
   const handleDeepSubmit = async () => {
-    if (!currentCall) return
+    if (!currentCall || !activeDeepTemplate) return
     await saveDeepReview({
       attemptId: currentCall.attempt.id,
       callSessionId: currentCall.session?.call_session_id,
-      scoreOpening: scores.opening,
-      scoreDiscovery: scores.discovery,
-      scoreControl: scores.control,
-      scoreObjections: scores.objections,
-      scoreClose: scores.close,
-      scoreNextStep: scores.nextStep,
-      whatWorked: whatWorked || undefined,
-      whatFailed: whatFailed || undefined,
-      coachingNotes: coachingNotes || undefined,
+      templateId: activeDeepTemplate.id,
+      templateVersion: activeDeepTemplate.version,
+      responses,
+      evidenceSnippets,
     })
     setReviewedIds((prev) => new Set(prev).add(currentCall.attempt.id))
     resetForm()
@@ -192,8 +322,30 @@ export default function ReviewPage() {
     setCurrentIndex((prev) => Math.min(prev + 1, reviewableCalls.length - 1))
   }
 
-  const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
-  const maxScore = RUBRIC_DIMENSIONS.length * 5
+  // Compute total score from score fields
+  const scoreFields = activeDeepTemplate?.fields.filter((f) => f.fieldType === "score") ?? []
+  const totalScore = scoreFields.reduce((sum, f) => sum + ((responses[f.key] as number) ?? 0), 0)
+  const maxScore = scoreFields.reduce((sum, f) => sum + (f.config.max ?? 5), 0)
+
+  // Group fields by section
+  const fieldSections = useMemo(() => {
+    if (!activeDeepTemplate) return []
+    const sections = new Map<string, ReviewField[]>()
+    for (const field of activeDeepTemplate.fields) {
+      const section = field.section || "General"
+      if (!sections.has(section)) sections.set(section, [])
+      sections.get(section)!.push(field)
+    }
+    return Array.from(sections.entries())
+  }, [activeDeepTemplate])
+
+  const updateEvidence = (fieldKey: string, snippet: EvidenceSnippet | null) => {
+    setEvidenceSnippets((prev) => {
+      const filtered = prev.filter((s) => s.fieldKey !== fieldKey)
+      if (snippet) filtered.push(snippet)
+      return filtered
+    })
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -207,7 +359,6 @@ export default function ReviewPage() {
       />
 
       <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
-        {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "quick" | "deep")} className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList className="grid grid-cols-2 w-80">
@@ -221,14 +372,19 @@ export default function ReviewPage() {
               </TabsTrigger>
             </TabsList>
 
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              {activeDeepTemplate && activeTab === "deep" && (
+                <Badge variant="secondary" className="text-xs">
+                  {activeDeepTemplate.name} v{activeDeepTemplate.version}
+                </Badge>
+              )}
               <span className="tabular-nums font-medium">
                 {currentIndex + 1} / {reviewableCalls.length}
               </span>
             </div>
           </div>
 
-          {/* Call Card — shared between tabs */}
+          {/* ─── Call Card (shared between tabs) ─── */}
           {currentCall ? (
             <Card className="mb-4">
               <CardContent className="pt-4">
@@ -259,7 +415,7 @@ export default function ReviewPage() {
                     </div>
                   </div>
 
-                  {/* Audio Player (if recording available) */}
+                  {/* Audio Player */}
                   {currentCall.session?.recording_url ? (
                     <div className="flex items-center gap-2">
                       <audio
@@ -294,9 +450,9 @@ export default function ReviewPage() {
                   </div>
                 ) : null}
 
-                {/* Notes from attempt */}
+                {/* Rep Notes */}
                 {currentCall.attempt.note && (
-                  <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+                  <div className="mt-3 p-2 bg-muted/50 rounded">
                     <p className="text-xs font-medium text-muted-foreground mb-1">Rep Notes</p>
                     <p className="text-sm">{currentCall.attempt.note}</p>
                   </div>
@@ -319,7 +475,6 @@ export default function ReviewPage() {
           <TabsContent value="quick" className="mt-0 space-y-4">
             {currentCall && (
               <>
-                {/* Tags */}
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm">Tag This Call</CardTitle>
@@ -333,8 +488,8 @@ export default function ReviewPage() {
                           type="button"
                           onClick={() => toggleTag(tag.value)}
                           className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selectedTags.includes(tag.value)
-                            ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
+                              ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
                             }`}
                         >
                           {tag.label}
@@ -344,7 +499,6 @@ export default function ReviewPage() {
                   </CardContent>
                 </Card>
 
-                {/* Market Insight + Promote */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-2">
@@ -376,8 +530,8 @@ export default function ReviewPage() {
                         type="button"
                         onClick={() => setPromoteToPlaybook(!promoteToPlaybook)}
                         className={`w-full p-4 rounded-lg border-2 text-left transition-all ${promoteToPlaybook
-                          ? "border-yellow-500 bg-yellow-500/5"
-                          : "border-border hover:border-yellow-500/40"
+                            ? "border-yellow-500 bg-yellow-500/5"
+                            : "border-border hover:border-yellow-500/40"
                           }`}
                       >
                         <p className="font-medium text-sm">
@@ -391,13 +545,8 @@ export default function ReviewPage() {
                   </Card>
                 </div>
 
-                {/* Quick Actions */}
                 <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1 bg-transparent"
-                    onClick={handleSkip}
-                  >
+                  <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
                     <SkipForward className="mr-2 h-4 w-4" />
                     Skip
                   </Button>
@@ -414,119 +563,186 @@ export default function ReviewPage() {
             )}
           </TabsContent>
 
-          {/* ─── Deep Dive Tab ─── */}
+          {/* ─── Deep Dive Tab (template-driven) ─── */}
           <TabsContent value="deep" className="mt-0 space-y-4">
-            {currentCall && (
+            {currentCall && activeDeepTemplate && (
               <>
-                {/* Rubric Scoring */}
+                {/* Template Header + Score */}
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm flex items-center justify-between">
-                      <span>Rubric Score</span>
-                      <span className="tabular-nums text-lg">
-                        {totalScore} / {maxScore}
-                      </span>
+                      <span>{activeDeepTemplate.name}</span>
+                      {scoreFields.length > 0 && (
+                        <span className="tabular-nums text-lg">
+                          {totalScore} / {maxScore}
+                        </span>
+                      )}
                     </CardTitle>
-                    <CardDescription>Rate each dimension 1-5</CardDescription>
+                    {activeDeepTemplate.description && (
+                      <CardDescription>{activeDeepTemplate.description}</CardDescription>
+                    )}
                   </CardHeader>
-                  <CardContent className="space-y-5">
-                    {RUBRIC_DIMENSIONS.map((dim) => (
-                      <div key={dim.key}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <Label className="font-medium">{dim.label}</Label>
-                            <p className="text-xs text-muted-foreground">{dim.description}</p>
-                          </div>
-                          <span className="text-xl font-bold tabular-nums w-8 text-right">
-                            {scores[dim.key]}
-                          </span>
-                        </div>
-                        <Slider
-                          min={1}
-                          max={5}
-                          step={1}
-                          value={[scores[dim.key]]}
-                          onValueChange={(v) =>
-                            setScores((prev) => ({ ...prev, [dim.key]: v[0] }))
-                          }
-                          className="w-full"
-                        />
-                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                          <span>Poor</span>
-                          <span>Average</span>
-                          <span>Excellent</span>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
                 </Card>
 
-                {/* Coaching Notes */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-green-600">What Worked</CardTitle>
+                {/* Render fields by section */}
+                {fieldSections.map(([section, fields]) => (
+                  <Card key={section}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider">
+                        {section}
+                      </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <Textarea
-                        value={whatWorked}
-                        onChange={(e) => setWhatWorked(e.target.value)}
-                        placeholder="Strengths in this call..."
-                        rows={4}
-                        className="resize-none"
-                      />
+                    <CardContent className="space-y-5">
+                      {fields.map((field) => {
+                        // ─── Score Field with Calibration Anchors ───
+                        if (field.fieldType === "score") {
+                          const value = (responses[field.key] as number) ?? field.config.min ?? 1
+                          return (
+                            <div key={field.key}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div>
+                                  <Label className="font-medium">{field.label}</Label>
+                                </div>
+                                <span className="text-xl font-bold tabular-nums w-8 text-right">
+                                  {value}
+                                </span>
+                              </div>
+                              <Slider
+                                min={field.config.min ?? 1}
+                                max={field.config.max ?? 5}
+                                step={1}
+                                value={[value]}
+                                onValueChange={(v) =>
+                                  setResponses((prev) => ({ ...prev, [field.key]: v[0] }))
+                                }
+                                className="w-full"
+                              />
+                              {/* Calibration anchor for current value */}
+                              <AnchorLabel value={value} anchors={field.config.anchors} />
+                            </div>
+                          )
+                        }
+
+                        // ─── Text Field ───
+                        if (field.fieldType === "text") {
+                          return (
+                            <div key={field.key}>
+                              <Label className="font-medium">{field.label}</Label>
+                              <Textarea
+                                value={(responses[field.key] as string) ?? ""}
+                                onChange={(e) =>
+                                  setResponses((prev) => ({
+                                    ...prev,
+                                    [field.key]: e.target.value,
+                                  }))
+                                }
+                                placeholder={field.config.placeholder ?? ""}
+                                rows={field.config.rows ?? 3}
+                                className="resize-none mt-1.5"
+                              />
+                            </div>
+                          )
+                        }
+
+                        // ─── Evidence Quote Field ───
+                        if (field.fieldType === "evidence_quote") {
+                          return (
+                            <EvidenceQuoteField
+                              key={field.key}
+                              field={field}
+                              transcriptText={currentCall.session?.transcript_text ?? null}
+                              snippet={evidenceSnippets.find((s) => s.fieldKey === field.key)}
+                              onUpdate={(s) => updateEvidence(field.key, s)}
+                            />
+                          )
+                        }
+
+                        // ─── Checkbox Field ───
+                        if (field.fieldType === "checkbox") {
+                          return (
+                            <label key={field.key} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={(responses[field.key] as boolean) ?? false}
+                                onChange={(e) =>
+                                  setResponses((prev) => ({
+                                    ...prev,
+                                    [field.key]: e.target.checked,
+                                  }))
+                                }
+                                className="rounded"
+                              />
+                              <span className="text-sm font-medium">{field.label}</span>
+                            </label>
+                          )
+                        }
+
+                        // ─── Multi-Select Field ───
+                        if (field.fieldType === "multi_select") {
+                          const selected = (responses[field.key] as string[]) ?? []
+                          return (
+                            <div key={field.key}>
+                              <Label className="font-medium">{field.label}</Label>
+                              <div className="flex flex-wrap gap-2 mt-1.5">
+                                {(field.config.options ?? []).map((opt) => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() =>
+                                      setResponses((prev) => {
+                                        const cur = (prev[field.key] as string[]) ?? []
+                                        return {
+                                          ...prev,
+                                          [field.key]: cur.includes(opt.value)
+                                            ? cur.filter((v) => v !== opt.value)
+                                            : [...cur, opt.value],
+                                        }
+                                      })
+                                    }
+                                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selected.includes(opt.value)
+                                        ? `${opt.color ?? "bg-primary/10 text-primary"} ring-2 ring-offset-1 ring-primary/30`
+                                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                      }`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        }
+
+                        return null
+                      })}
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-red-600">What Failed</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea
-                        value={whatFailed}
-                        onChange={(e) => setWhatFailed(e.target.value)}
-                        placeholder="Areas to improve..."
-                        rows={4}
-                        className="resize-none"
-                      />
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-blue-600">Coaching Notes</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Textarea
-                        value={coachingNotes}
-                        onChange={(e) => setCoachingNotes(e.target.value)}
-                        placeholder="Key takeaways, drills to run..."
-                        rows={4}
-                        className="resize-none"
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
+                ))}
 
                 {/* Deep Actions */}
                 <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1 bg-transparent"
-                    onClick={handleSkip}
-                  >
+                  <Button variant="outline" className="flex-1 bg-transparent" onClick={handleSkip}>
                     <SkipForward className="mr-2 h-4 w-4" />
                     Skip
                   </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={handleDeepSubmit}
-                    disabled={saving}
-                  >
+                  <Button className="flex-1" onClick={handleDeepSubmit} disabled={saving}>
                     <Check className="mr-2 h-4 w-4" />
                     Save Deep Review
                   </Button>
                 </div>
               </>
+            )}
+
+            {/* No template state */}
+            {currentCall && !activeDeepTemplate && !templatesLoading && (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <BookOpen className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                  <h3 className="font-semibold">No Review Template Found</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Create a review template in Settings → Templates to enable Deep Dive reviews
+                  </p>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </Tabs>

@@ -12,6 +12,7 @@ import { DuplicateDetector } from "@/components/duplicate-detector"
 import { WorkflowEditor } from "@/components/workflow-editor"
 import { SequenceManager } from "@/components/sequence-editor"
 import { ProfileTab } from "@/components/profile-tab"
+import { ReviewTemplatesTab } from "@/components/review-templates-tab"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
@@ -848,6 +849,7 @@ export default function SettingsPage() {
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="sequences">Sequences</TabsTrigger>
             <TabsTrigger value="framework">Framework</TabsTrigger>
+            <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
@@ -872,6 +874,10 @@ export default function SettingsPage() {
 
           <TabsContent value="framework">
             <FrameworkTab />
+          </TabsContent>
+
+          <TabsContent value="templates">
+            <ReviewTemplatesTab />
           </TabsContent>
         </Tabs>
       </div>
