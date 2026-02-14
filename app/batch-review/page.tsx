@@ -338,6 +338,22 @@ export default function BatchReviewPage() {
                             {attempt.note && <p><strong>Notes:</strong> {attempt.note}</p>}
                             {attempt.mattersMost && <p><strong>What mattered:</strong> {attempt.mattersMost}</p>}
                             <p><strong>Next action:</strong> {attempt.nextAction}</p>
+                            {attempt.recordingUrl && (
+                              <div className="pt-2">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Recording</p>
+                                <audio controls className="w-full h-8" src={attempt.recordingUrl}>
+                                  <track kind="captions" />
+                                </audio>
+                              </div>
+                            )}
+                            {attempt.callTranscriptText && (
+                              <div className="pt-2">
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Transcript</p>
+                                <div className="text-xs bg-background p-2 rounded whitespace-pre-wrap max-h-40 overflow-y-auto">
+                                  {attempt.callTranscriptText}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

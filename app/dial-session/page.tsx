@@ -176,7 +176,82 @@ export default function DialSessionPage() {
     return () => clearInterval(interval)
   }, [isOnCall, callStartTime])
 
-  // Reset log form when outcome changes
+  // Check stop signals after logging
+  useEffect(() => {
+    if (sessionAttempts.length > 0 && sessionAttempts.length % 5 === 0) {
+      const triggered = checkStopSignals(sessionAttempts, stopSignals, drills)
+      if (triggered && !activeDrill) {
+        setTriggeredSignal(triggered)
+        setShowDrillAlert(true)
+      }
+    }
+  }, [sessionAttempts])
+
+  // Function to initiate a call and register pending attempt
+  const initiateCall = useCallback(async () => {
+    if (!currentLead?.phone) return
+
+    // Format phone to E.164 (assuming it's already formatted or close)
+    const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
+
+    // 1) IMMEDIATELY open the call tab synchronously
+    const w = window.open(`tel:${e164Number}`, '_blank', 'noopener,noreferrer')
+    if (!w) {
+        alert("Popup blocked. Please allow popups for this site to launch the dialer.")
+    }
+
+    // 2) Copy phone to clipboard (background)
+    try {
+        await navigator.clipboard.writeText(e164Number)
+    } catch (err) {
+        console.error('Failed to copy phone number', err)
+    }
+
+    // 3) Create attempt and call_session in DB (background, non-blocking)
+    {
+        const supabase = getSupabase()
+
+        // Non-blocking inserts
+        supabase.from('attempts').insert([{
+            lead_id: currentLead.id,
+            timestamp: new Date().toISOString(),
+            outcome: 'No connect',
+            dm_reached: false,
+            next_action: 'Call again',
+            duration_sec: 0
+        }]).select().single().then(({ data: attempt, error: attemptError }) => {
+            if (attemptError) {
+                console.error("Error creating attempt:", attemptError)
+                return
+            }
+            if (attempt) {
+                supabase.from('call_sessions').insert([{
+                    attempt_id: attempt.id,
+                    lead_id: currentLead.id,
+                    phone_e164: e164Number,
+                    direction: 'outgoing',
+                    status: 'initiated',
+                    started_at: new Date().toISOString()
+                }]).then(({ error }) => {
+                    if (error) console.error("Error creating call session:", error)
+                })
+            }
+        })
+    }
+
+    // Create pending attempt for OpenPhone webhook matching
+    const attemptId = `pending-${Date.now()}`
+    setPendingAttemptId(attemptId)
+
+    console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
+
+    // Start call timer
+    setIsOnCall(true)
+    setCallStartTime(new Date())
+    setCallDuration(0)
+  }, [currentLead])
+
+  // Reset form when outcome changes
   useEffect(() => {
     setSelectedWhy(null)
     setSelectedRepMistake(null)
@@ -237,30 +312,6 @@ export default function DialSessionPage() {
     router.push("/batch-review")
   }
 
-  const initiateCall = useCallback(async () => {
-    if (!currentLead?.phone) return
-
-    const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
-
-    // Open tel: link
-    const w = window.open(`tel:${e164Number}`, "_blank", "noopener,noreferrer")
-    if (!w) {
-      alert("Popup blocked. Please allow popups for this site to launch the dialer.")
-    }
-
-    // Copy to clipboard
-    try {
-      await navigator.clipboard.writeText(e164Number)
-    } catch {
-      // non-critical
-    }
-
-    // Start call timer
-    setIsOnCall(true)
-    setCallStartTime(new Date())
-    setCallDuration(0)
-  }, [currentLead])
-
   const endCall = () => {
     setIsOnCall(false)
     setPageState("logging")
@@ -318,6 +369,20 @@ export default function DialSessionPage() {
     }
 
     if (data) {
+      // Fetch artifacts associated with this attempt (if any) via the view
+      let artifacts: { recording_url: string | null, transcript_text: string | null } = { recording_url: null, transcript_text: null }
+      {
+           const { data: artifactData } = await supabase
+              .from('v_calls_with_artifacts')
+              .select('recording_url, transcript_text')
+              .eq('attempt_id', data.id)
+              .single()
+
+           if (artifactData) {
+               artifacts = artifactData
+           }
+      }
+
       const attempt: Attempt = {
         id: data.id,
         leadId: data.lead_id,
@@ -332,6 +397,8 @@ export default function DialSessionPage() {
         sessionId: data.session_id,
         durationSec: data.duration_sec,
         createdAt: data.created_at,
+        recordingUrl: artifacts.recording_url || undefined,
+        callTranscriptText: artifacts.transcript_text || undefined,
       }
 
       // Store signals in localStorage — only the phase's markers
