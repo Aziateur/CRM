@@ -354,20 +354,8 @@ export default function DialSessionPage() {
     }
 
     if (data) {
-      // Fetch artifacts associated with this attempt (if any) via the view
-      let artifacts: { recording_url: string | null, transcript_text: string | null } = { recording_url: null, transcript_text: null }
-      {
-        const { data: artifactData } = await supabase
-          .from('v_calls_with_artifacts')
-          .select('recording_url, transcript_text')
-          .eq('attempt_id', data.id)
-          .single()
-
-        if (artifactData) {
-          artifacts = artifactData
-        }
-      }
-
+      // Evidence (recording/transcript) arrives later via OpenPhone webhook.
+      // The background evidence queue (Phase 3) will fill these in.
       const attempt: Attempt = {
         id: data.id,
         leadId: data.lead_id,
@@ -382,8 +370,8 @@ export default function DialSessionPage() {
         sessionId: data.session_id,
         durationSec: data.duration_sec,
         createdAt: data.created_at,
-        recordingUrl: artifacts.recording_url || undefined,
-        callTranscriptText: artifacts.transcript_text || undefined,
+        recordingUrl: undefined,
+        callTranscriptText: undefined,
       }
 
       // Store signals in localStorage — only the phase's markers
