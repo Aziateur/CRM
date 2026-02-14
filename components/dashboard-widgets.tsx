@@ -3,7 +3,6 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Lead, Attempt, PipelineStage, Task } from "@/lib/store"
-import { getEffectiveStage } from "@/lib/store"
 import { Phone, Users, TrendingUp, Calendar, ClipboardList, Zap } from "lucide-react"
 
 interface DashboardWidgetsProps {
@@ -56,7 +55,7 @@ function PipelineFunnel({
     const counts: Record<string, number> = {}
     for (const s of stages) counts[s.name] = 0
     for (const lead of leads) {
-      const stage = getEffectiveStage(lead, attempts)
+      const stage = lead.stage || "New"
       if (counts[stage] !== undefined) counts[stage]++
       else counts[stage] = 1
     }

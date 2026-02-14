@@ -29,7 +29,7 @@ import {
 import {
   segmentOptions,
   attemptOutcomeOptions,
-  getEffectiveStage,
+
   type Lead,
   type Attempt,
 } from "@/lib/store"
@@ -106,7 +106,7 @@ export default function LeadsPage() {
   const filteredLeads = leadsWithDerived.filter((lead) => {
     const matchesSegment = segmentFilter === "all" || lead.segment === segmentFilter
     const matchesOutcome = outcomeFilter === "all" || lead.lastAttempt?.outcome === outcomeFilter
-    const matchesStage = stageFilter === "all" || getEffectiveStage(lead, attempts) === stageFilter
+    const matchesStage = stageFilter === "all" || (lead.stage || "New") === stageFilter
     const matchesSearch = lead.company.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSegment && matchesOutcome && matchesStage && matchesSearch
   })

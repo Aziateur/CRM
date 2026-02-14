@@ -1,8 +1,14 @@
 .next
+<<<<<<< HEAD
 out
+=======
+>>>>>>> origin/main
 node_modules
 .mcp.json
 .env
 .env.local
+<<<<<<< HEAD
 tsconfig.tsbuildinfo
+=======
+>>>>>>> origin/main
 .sketches/

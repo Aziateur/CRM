@@ -40,7 +40,6 @@ import {
   XCircle,
   ChevronDown,
   Keyboard,
-  Clock,
   Zap,
   RotateCcw,
   Crosshair,
@@ -121,7 +120,6 @@ export default function DialSessionPage() {
   // Call state
   const [isOnCall, setIsOnCall] = useState(false)
   const [callStartTime, setCallStartTime] = useState<Date | null>(null)
-  const [callDuration, setCallDuration] = useState(0)
 
   // Log state
   const [selectedOutcome, setSelectedOutcome] = useState<AttemptOutcome | null>(null)
@@ -165,91 +163,51 @@ export default function DialSessionPage() {
     return Math.round((sessionAttempts.length / hoursElapsed) * 10) / 10
   }, [sessionStartTime, sessionAttempts])
 
-  // Call timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout
-    if (isOnCall && callStartTime) {
-      interval = setInterval(() => {
-        setCallDuration(Math.floor((Date.now() - callStartTime.getTime()) / 1000))
-      }, 1000)
-    }
-    return () => clearInterval(interval)
-  }, [isOnCall, callStartTime])
+  // No client-side call timer — duration comes from OpenPhone webhook via call_sessions table
 
-  // Check stop signals after logging
-  useEffect(() => {
-    if (sessionAttempts.length > 0 && sessionAttempts.length % 5 === 0) {
-      const triggered = checkStopSignals(sessionAttempts, stopSignals, drills)
-      if (triggered && !activeDrill) {
-        setTriggeredSignal(triggered)
-        setShowDrillAlert(true)
-      }
-    }
-  }, [sessionAttempts])
 
-  // Function to initiate a call and register pending attempt
+
+  // Initiate a call — creates call_session only. Attempt is created later in logAttempt().
   const initiateCall = useCallback(async () => {
     if (!currentLead?.phone) return
 
     // Format phone to E.164 (assuming it's already formatted or close)
     const e164Number = currentLead.phone.replace(/[^+\d]/g, "")
 
-    // 1) IMMEDIATELY open the call tab synchronously
-    const w = window.open(`tel:${e164Number}`, '_blank', 'noopener,noreferrer')
-    if (!w) {
-        alert("Popup blocked. Please allow popups for this site to launch the dialer.")
-    }
+    // 1) Trigger native dialer via hidden anchor click (avoids popup blockers)
+    const anchor = document.createElement('a')
+    anchor.href = `tel:${e164Number}`
+    anchor.style.display = 'none'
+    document.body.appendChild(anchor)
+    anchor.click()
+    document.body.removeChild(anchor)
 
     // 2) Copy phone to clipboard (background)
     try {
-        await navigator.clipboard.writeText(e164Number)
+      await navigator.clipboard.writeText(e164Number)
     } catch (err) {
-        console.error('Failed to copy phone number', err)
+      console.error('Failed to copy phone number', err)
     }
 
-    // 3) Create attempt and call_session in DB (background, non-blocking)
+    // 3) Create ONLY a call_session — NO attempt yet (attempt is created when rep logs outcome)
     {
-        const supabase = getSupabase()
-
-        // Non-blocking inserts
-        supabase.from('attempts').insert([{
-            lead_id: currentLead.id,
-            timestamp: new Date().toISOString(),
-            outcome: 'No connect',
-            dm_reached: false,
-            next_action: 'Call again',
-            duration_sec: 0
-        }]).select().single().then(({ data: attempt, error: attemptError }) => {
-            if (attemptError) {
-                console.error("Error creating attempt:", attemptError)
-                return
-            }
-            if (attempt) {
-                supabase.from('call_sessions').insert([{
-                    attempt_id: attempt.id,
-                    lead_id: currentLead.id,
-                    phone_e164: e164Number,
-                    direction: 'outgoing',
-                    status: 'initiated',
-                    started_at: new Date().toISOString()
-                }]).then(({ error }) => {
-                    if (error) console.error("Error creating call session:", error)
-                })
-            }
-        })
+      const supabase = getSupabase()
+      supabase.from('call_sessions').insert([{
+        lead_id: currentLead.id,
+        phone_e164: e164Number,
+        direction: 'outgoing',
+        status: 'initiated',
+        started_at: new Date().toISOString(),
+        project_id: projectId,
+      }]).then(({ error }) => {
+        if (error) console.error("Error creating call session:", error)
+      })
     }
 
-    // Create pending attempt for OpenPhone webhook matching
-    const attemptId = `pending-${Date.now()}`
-    setPendingAttemptId(attemptId)
-
-    console.log(`[v0] Registered pending attempt ${attemptId} for ${e164Number}`)
-
-    // Start call timer
+    // Mark as on-call (no timer — duration comes from OpenPhone webhook)
     setIsOnCall(true)
     setCallStartTime(new Date())
-    setCallDuration(0)
-  }, [currentLead])
+  }, [currentLead, projectId])
 
   // Reset form when outcome changes
   useEffect(() => {
@@ -308,7 +266,6 @@ export default function DialSessionPage() {
     await endPersistedSession()
     setIsOnCall(false)
     setCallStartTime(null)
-    setCallDuration(0)
     router.push("/batch-review")
   }
 
@@ -352,7 +309,7 @@ export default function DialSessionPage() {
       note: noteText || null,
       experiment_tag: selectedExperiment === "none" ? null : selectedExperiment,
       session_id: persistedSession?.id || null,
-      duration_sec: callDuration,
+      duration_sec: 0, // Real duration comes from OpenPhone webhook via call_sessions
       project_id: projectId,
     }
 
@@ -372,15 +329,15 @@ export default function DialSessionPage() {
       // Fetch artifacts associated with this attempt (if any) via the view
       let artifacts: { recording_url: string | null, transcript_text: string | null } = { recording_url: null, transcript_text: null }
       {
-           const { data: artifactData } = await supabase
-              .from('v_calls_with_artifacts')
-              .select('recording_url, transcript_text')
-              .eq('attempt_id', data.id)
-              .single()
+        const { data: artifactData } = await supabase
+          .from('v_calls_with_artifacts')
+          .select('recording_url, transcript_text')
+          .eq('attempt_id', data.id)
+          .single()
 
-           if (artifactData) {
-               artifacts = artifactData
-           }
+        if (artifactData) {
+          artifacts = artifactData
+        }
       }
 
       const attempt: Attempt = {
@@ -452,7 +409,6 @@ export default function DialSessionPage() {
       }
 
       // Advance to next lead
-      setCallDuration(0)
       setPageState("dialing")
       if (currentQueueIndex < queue.length - 1) {
         setCurrentQueueIndex(currentQueueIndex + 1)
@@ -745,11 +701,11 @@ export default function DialSessionPage() {
                   </div>
                 )}
 
-                {/* Call timer (when on call) */}
+                {/* Call status (when on call) */}
                 {isOnCall && (
-                  <div className="flex items-center gap-2 text-2xl font-mono">
-                    <Clock className="h-6 w-6 text-red-500 animate-pulse" />
-                    <span>{formatDuration(callDuration)}</span>
+                  <div className="flex items-center gap-2 text-lg font-medium">
+                    <Phone className="h-5 w-5 text-green-500 animate-pulse" />
+                    <span className="text-green-600">Call in progress</span>
                   </div>
                 )}
 
@@ -819,11 +775,8 @@ export default function DialSessionPage() {
             {pageState === "logging" && (
               <Card className="mb-4">
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Log: {currentLead.company}</span>
-                    <span className="text-sm font-normal text-muted-foreground">
-                      {formatDuration(callDuration)}
-                    </span>
+                  <CardTitle>
+                    Log: {currentLead.company}
                   </CardTitle>
                   <CardDescription className="flex items-center gap-2">
                     <Keyboard className="h-4 w-4" />
@@ -1049,7 +1002,6 @@ export default function DialSessionPage() {
                       className="bg-transparent"
                       onClick={() => {
                         setPageState("dialing")
-                        setCallDuration(0)
                       }}
                     >
                       Cancel

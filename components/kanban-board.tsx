@@ -33,7 +33,7 @@ export function KanbanBoard({ leads, stages, attempts, tags = [], leadTagsMap = 
     (stageName: string, isFirstStage: boolean) => {
       const stageNames = new Set(stages.map((s) => s.name))
       return leads.filter((lead) => {
-        const effective = getEffectiveStage(lead, attempts)
+        const effective = lead.stage || "New"
         if (effective === stageName) return true
         // Put leads with no stage or unrecognized stage in the first column
         if (isFirstStage && !stageNames.has(effective)) return true
@@ -70,7 +70,7 @@ export function KanbanBoard({ leads, stages, attempts, tags = [], leadTagsMap = 
     const lead = leads.find((l) => l.id === leadId)
     if (!lead) return
 
-    const currentStage = getEffectiveStage(lead, attempts)
+    const currentStage = lead.stage || "New"
     if (currentStage === stageName) return
 
     const stage = stages.find((s) => s.name === stageName)
@@ -121,9 +121,8 @@ export function KanbanBoard({ leads, stages, attempts, tags = [], leadTagsMap = 
         return (
           <div
             key={stage.id}
-            className={`flex-shrink-0 w-64 rounded-lg border transition-colors ${
-              isOver ? "border-primary bg-primary/5" : "border-border bg-muted/30"
-            }`}
+            className={`flex-shrink-0 w-64 rounded-lg border transition-colors ${isOver ? "border-primary bg-primary/5" : "border-border bg-muted/30"
+              }`}
             onDragOver={(e) => handleDragOver(e, stage.name)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, stage.name)}
@@ -157,9 +156,8 @@ export function KanbanBoard({ leads, stages, attempts, tags = [], leadTagsMap = 
                         onDragStart={(e) => handleDragStart(e, lead.id)}
                         onDragEnd={handleDragEnd}
                         onClick={() => onSelectLead(lead)}
-                        className={`p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-                          draggedLeadId === lead.id ? "opacity-50" : ""
-                        }`}
+                        className={`p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${draggedLeadId === lead.id ? "opacity-50" : ""
+                          }`}
                       >
                         <p className="font-medium text-sm truncate">{lead.company}</p>
                         {tags.length > 0 && leadTagsMap[lead.id] && (

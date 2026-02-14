@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { Lead, Attempt, AttemptOutcome, DerivedStage, DerivedStatus, PipelineStage, FieldDefinition, Tag } from "@/lib/store"
-import { getDerivedStage, getDerivedStatus, getEffectiveStage } from "@/lib/store"
+import { getDerivedStage, getDerivedStatus } from "@/lib/store"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TagBadges } from "@/components/tag-manager"
 
@@ -143,7 +143,7 @@ export function LeadsTable({ leads, loading, stages = [], attempts = [], fieldDe
         </TableHeader>
         <TableBody>
           {leads.map((lead) => {
-            const effectiveStage = getEffectiveStage(lead, attempts)
+            const effectiveStage = lead.stage || "New"
             const stageColor = getStageColor(effectiveStage, stages)
 
             return (
