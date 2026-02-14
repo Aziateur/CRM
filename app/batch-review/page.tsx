@@ -31,11 +31,10 @@ import type { Attempt, Lead } from "@/lib/store"
 // ─── Types ───
 
 interface CallSession {
-  id: string
-  openphone_call_id: string | null
+  call_session_id: string
+  attempt_id: string | null
   recording_url: string | null
-  transcript: string | null
-  duration_sec: number | null
+  transcript_text: string | null
 }
 
 interface ReviewableCall {
@@ -103,7 +102,11 @@ export default function ReviewPage() {
   // Build reviewable calls — attempts with DM connection (actual conversations)
   const reviewableCalls = useMemo((): ReviewableCall[] => {
     const leadMap = new Map(leads.map((l) => [l.id, l]))
-    const sessionMap = new Map(callSessions.map((s) => [s.id, s]))
+    // Map sessions by both call_session_id AND attempt_id for flexible matching
+    const sessionByIdMap = new Map(callSessions.map((s) => [s.call_session_id, s]))
+    const sessionByAttemptMap = new Map(
+      callSessions.filter((s) => s.attempt_id).map((s) => [s.attempt_id!, s])
+    )
 
     return attempts
       .filter((a) => a.dmReached && !reviewedIds.has(a.id))
@@ -111,7 +114,9 @@ export default function ReviewPage() {
       .map((attempt) => ({
         attempt,
         lead: leadMap.get(attempt.leadId) || null,
-        session: attempt.sessionId ? sessionMap.get(attempt.sessionId) || null : null,
+        session: (attempt.sessionId ? sessionByIdMap.get(attempt.sessionId) : null)
+          || sessionByAttemptMap.get(attempt.id)
+          || null,
       }))
   }, [attempts, leads, callSessions, reviewedIds])
 
@@ -122,10 +127,10 @@ export default function ReviewPage() {
     if (!projectId) return
     const fetchSessions = async () => {
       const supabase = getSupabase()
+      // Use the view that extracts recordings + transcripts from webhook_events
       const { data } = await supabase
-        .from("call_sessions")
-        .select("id, openphone_call_id, recording_url, transcript, duration_sec")
-        .eq("project_id", projectId)
+        .from("v_calls_with_artifacts")
+        .select("call_session_id, attempt_id, recording_url, transcript_text")
       if (data) setCallSessions(data as CallSession[])
     }
     fetchSessions()
@@ -152,7 +157,7 @@ export default function ReviewPage() {
     if (!currentCall) return
     await saveQuickReview({
       attemptId: currentCall.attempt.id,
-      callSessionId: currentCall.session?.id,
+      callSessionId: currentCall.session?.call_session_id,
       tags: selectedTags,
       marketInsight: marketInsight || undefined,
       promoteToPlaybook,
@@ -166,7 +171,7 @@ export default function ReviewPage() {
     if (!currentCall) return
     await saveDeepReview({
       attemptId: currentCall.attempt.id,
-      callSessionId: currentCall.session?.id,
+      callSessionId: currentCall.session?.call_session_id,
       scoreOpening: scores.opening,
       scoreDiscovery: scores.discovery,
       scoreControl: scores.control,
@@ -233,11 +238,8 @@ export default function ReviewPage() {
                       {currentCall.lead?.company || "Unknown Company"}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {currentCall.lead?.contacts?.[0]?.name || "Unknown"} ·{" "}
-                      {new Date(currentCall.attempt.timestamp).toLocaleDateString()} ·{" "}
-                      {currentCall.session?.duration_sec
-                        ? `${Math.round(currentCall.session.duration_sec / 60)}min`
-                        : "No duration"}
+                      {currentCall.attempt.outcome} ·{" "}
+                      {new Date(currentCall.attempt.timestamp).toLocaleDateString()}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge
@@ -275,13 +277,13 @@ export default function ReviewPage() {
                 </div>
 
                 {/* Transcript */}
-                {currentCall.session?.transcript ? (
+                {currentCall.session?.transcript_text ? (
                   <div className="mt-4 p-3 bg-muted rounded-lg max-h-48 overflow-y-auto">
                     <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
                       <MessageSquare className="h-3 w-3" />
                       Transcript
                     </p>
-                    <p className="text-sm whitespace-pre-wrap">{currentCall.session.transcript}</p>
+                    <p className="text-sm whitespace-pre-wrap">{currentCall.session.transcript_text}</p>
                   </div>
                 ) : currentCall.session ? (
                   <div className="mt-4 p-3 bg-yellow-50/50 rounded-lg border border-yellow-200">

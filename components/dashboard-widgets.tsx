@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Lead, Attempt, PipelineStage, Task } from "@/lib/store"
-import { Phone, Users, TrendingUp, Calendar } from "lucide-react"
+import { Phone, Users, TrendingUp, Calendar, ListTodo } from "lucide-react"
 
 interface DashboardWidgetsProps {
   leads: Lead[]
@@ -93,7 +93,7 @@ function PipelineFunnel({
   )
 }
 
-export function DashboardWidgets({ leads, attempts, stages }: DashboardWidgetsProps) {
+export function DashboardWidgets({ leads, attempts, stages, tasks }: DashboardWidgetsProps) {
   const metrics = useMemo(() => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -116,6 +116,11 @@ export function DashboardWidgets({ leads, attempts, stages }: DashboardWidgetsPr
       ? Math.round((monthConnects / monthAttempts.length) * 100)
       : 0
 
+    const pendingTasks = tasks?.length ?? 0
+    const overdueTasks = (tasks ?? []).filter(
+      (t) => new Date(t.dueAt) < new Date(new Date().toDateString())
+    ).length
+
     return {
       totalLeads: leads.length,
       callsThisWeek: weekAttempts.length,
@@ -124,12 +129,14 @@ export function DashboardWidgets({ leads, attempts, stages }: DashboardWidgetsPr
       monthConnectRate,
       weekMeetings,
       monthMeetings,
+      pendingTasks,
+      overdueTasks,
     }
-  }, [leads, attempts])
+  }, [leads, attempts, tasks])
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <MetricCard
           title="Total Leads"
           value={metrics.totalLeads}
@@ -152,6 +159,12 @@ export function DashboardWidgets({ leads, attempts, stages }: DashboardWidgetsPr
           value={metrics.weekMeetings}
           subtitle={`${metrics.monthMeetings} this month`}
           icon={Calendar}
+        />
+        <MetricCard
+          title="Pending Tasks"
+          value={metrics.pendingTasks}
+          subtitle={metrics.overdueTasks > 0 ? `${metrics.overdueTasks} overdue` : undefined}
+          icon={ListTodo}
         />
       </div>
       <PipelineFunnel leads={leads} attempts={attempts} stages={stages} />
