@@ -59,6 +59,18 @@ const QUICK_TAGS = [
   { value: "competitor_mention", label: "Competitor Mention", color: "bg-yellow-500/10 text-yellow-600" },
 ]
 
+const GATEKEEPER_TAGS = [
+  { value: "good_navigation", label: "Good Navigation", color: "bg-green-500/10 text-green-600" },
+  { value: "got_name", label: "Got DM Name", color: "bg-blue-500/10 text-blue-600" },
+  { value: "got_direct_line", label: "Got Direct Line", color: "bg-indigo-500/10 text-indigo-600" },
+  { value: "persistence_win", label: "Persistence Win", color: "bg-purple-500/10 text-purple-600" },
+  { value: "blocked_hard", label: "Blocked Hard", color: "bg-red-500/10 text-red-600" },
+  { value: "wrong_approach", label: "Wrong Approach", color: "bg-orange-500/10 text-orange-600" },
+  { value: "callback_secured", label: "Callback Secured", color: "bg-teal-500/10 text-teal-600" },
+]
+
+type ReviewScope = "dm_reached" | "gatekeeper" | "all"
+
 // ─── Anchor Label Component ───
 
 function AnchorLabel({ value, anchors }: { value: number; anchors?: Record<string, string> }) {
@@ -212,6 +224,7 @@ export default function ReviewPage() {
   const [callSessions, setCallSessions] = useState<CallSession[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set())
+  const [reviewScope, setReviewScope] = useState<ReviewScope>("dm_reached")
 
   // Quick review state
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -258,7 +271,14 @@ export default function ReviewPage() {
     )
 
     return attempts
-      .filter((a) => a.dmReached && !reviewedIds.has(a.id))
+      .filter((a) => {
+        if (reviewedIds.has(a.id)) return false
+        switch (reviewScope) {
+          case "dm_reached": return a.dmReached
+          case "gatekeeper": return a.outcome === "Gatekeeper only"
+          case "all": return true
+        }
+      })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .map((attempt) => ({
         attempt,
@@ -268,7 +288,7 @@ export default function ReviewPage() {
           sessionByAttemptMap.get(attempt.id) ||
           null,
       }))
-  }, [attempts, leads, callSessions, reviewedIds])
+  }, [attempts, leads, callSessions, reviewedIds, reviewScope])
 
   const currentCall = reviewableCalls[currentIndex] || null
 
@@ -461,6 +481,27 @@ export default function ReviewPage() {
               </div>
             </div>
 
+            {/* Scope Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium">Scope:</span>
+              {([
+                { value: "dm_reached" as const, label: "DM Reached", count: attempts.filter(a => a.dmReached && !reviewedIds.has(a.id)).length },
+                { value: "gatekeeper" as const, label: "Gatekeeper", count: attempts.filter(a => a.outcome === "Gatekeeper only" && !reviewedIds.has(a.id)).length },
+                { value: "all" as const, label: "All Calls", count: attempts.filter(a => !reviewedIds.has(a.id)).length },
+              ]).map((scope) => (
+                <button
+                  key={scope.value}
+                  onClick={() => { setReviewScope(scope.value); setCurrentIndex(0) }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${reviewScope === scope.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                >
+                  {scope.label} ({scope.count})
+                </button>
+              ))}
+            </div>
+
             {/* ─── Call Card (shared between tabs) ─── */}
             {currentCall ? (
               <Card className="mb-4">
@@ -559,7 +600,7 @@ export default function ReviewPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-2">
-                        {QUICK_TAGS.map((tag) => (
+                        {(currentCall?.attempt.outcome === "Gatekeeper only" ? GATEKEEPER_TAGS : QUICK_TAGS).map((tag) => (
                           <button
                             key={tag.value}
                             type="button"
