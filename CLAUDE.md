@@ -46,6 +46,18 @@ Dalio CRM is a sales pipeline management tool built for high-volume cold calling
 - Run linter/formatter before finishing
 - Summarize what you changed and why
 
+## TypeScript Idioms
+
+Follow the TypeScript language idioms guide at `docs/typescript-idioms.md`. Key rules:
+- `const` by default, `let` only when unavoidable, `var` never
+- `unknown` over `any` — narrow explicitly
+- `as const` objects over enums
+- `??` over `||` for defaults
+- Spread to copy — never mutate the original
+- Annotate at boundaries, infer the rest
+- Named exports over default exports (except Next.js pages)
+- Arrow functions for callbacks, `function` for top-level declarations
+
 ---
 
 ## Code Style

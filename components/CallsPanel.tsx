@@ -81,8 +81,8 @@ export function CallsPanel({ leadId, phone }: CallsPanelProps) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Phone className="h-4 w-4" />
-          Call Recordings ({calls.length})
+          <Phone className="h-4 w-4 text-blue-600" />
+          Call History
         </CardTitle>
       </CardHeader>
       <CardContent>
