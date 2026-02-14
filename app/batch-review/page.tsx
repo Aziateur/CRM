@@ -258,7 +258,7 @@ export default function ReviewPage() {
                   </div>
 
                   {/* Audio Player (if recording available) */}
-                  {currentCall.session?.recording_url && (
+                  {currentCall.session?.recording_url ? (
                     <div className="flex items-center gap-2">
                       <audio
                         controls
@@ -267,11 +267,15 @@ export default function ReviewPage() {
                         preload="none"
                       />
                     </div>
-                  )}
+                  ) : currentCall.session ? (
+                    <Badge variant="outline" className="text-xs text-yellow-600 border-yellow-300 animate-pulse">
+                      Recording pending...
+                    </Badge>
+                  ) : null}
                 </div>
 
                 {/* Transcript */}
-                {currentCall.session?.transcript && (
+                {currentCall.session?.transcript ? (
                   <div className="mt-4 p-3 bg-muted rounded-lg max-h-48 overflow-y-auto">
                     <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
                       <MessageSquare className="h-3 w-3" />
@@ -279,7 +283,14 @@ export default function ReviewPage() {
                     </p>
                     <p className="text-sm whitespace-pre-wrap">{currentCall.session.transcript}</p>
                   </div>
-                )}
+                ) : currentCall.session ? (
+                  <div className="mt-4 p-3 bg-yellow-50/50 rounded-lg border border-yellow-200">
+                    <p className="text-xs text-yellow-600 flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" />
+                      Transcript processing — will appear when OpenPhone webhook delivers it
+                    </p>
+                  </div>
+                ) : null}
 
                 {/* Notes from attempt */}
                 {currentCall.attempt.note && (
