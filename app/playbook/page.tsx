@@ -54,6 +54,7 @@ import {
 export default function PlaybookPage() {
   const [rules, setRules] = useState<Rule[]>([])
   const [stopSignals, setStopSignals] = useState<StopSignal[]>([])
+  const [evidenceCounts, setEvidenceCounts] = useState<Record<string, number>>({})
   const projectId = useProjectId()
 
   useEffect(() => {
@@ -61,9 +62,14 @@ export default function PlaybookPage() {
 
     const fetchData = async () => {
       const supabase = getSupabase()
-      const { data: rulesData } = await supabase.from('rules').select('*').eq('project_id', projectId)
-      if (rulesData) {
-        setRules(rulesData.map((r: any) => ({
+      const [rulesRes, signalsRes, evidenceRes] = await Promise.all([
+        supabase.from('rules').select('*').eq('project_id', projectId),
+        supabase.from('stop_signals').select('*').eq('project_id', projectId),
+        supabase.from("playbook_evidence").select("rule_id").eq("project_id", projectId),
+      ])
+
+      if (rulesRes.data) {
+        setRules(rulesRes.data.map((r: any) => ({
           id: r.id,
           ifWhen: r.if_when || r.ifWhen,
           then: r.then_action || r.then,
@@ -75,9 +81,8 @@ export default function PlaybookPage() {
         })))
       }
 
-      const { data: signalsData } = await supabase.from('stop_signals').select('*').eq('project_id', projectId)
-      if (signalsData) {
-        setStopSignals(signalsData.map((s: any) => ({
+      if (signalsRes.data) {
+        setStopSignals(signalsRes.data.map((s: any) => ({
           id: s.id,
           name: s.name,
           description: s.description,
@@ -87,6 +92,15 @@ export default function PlaybookPage() {
           recommendedDrillId: s.recommended_drill_id || s.recommendedDrillId,
           isActive: s.is_active
         })))
+      }
+
+      // Count evidence per rule
+      if (evidenceRes.data) {
+        const counts: Record<string, number> = {}
+        evidenceRes.data.forEach((e: { rule_id: string }) => {
+          counts[e.rule_id] = (counts[e.rule_id] || 0) + 1
+        })
+        setEvidenceCounts(counts)
       }
     }
     fetchData()
@@ -376,6 +390,11 @@ export default function PlaybookPage() {
                             <Badge className={getConfidenceColor(rule.confidence)}>
                               {rule.confidence}
                             </Badge>
+                            {evidenceCounts[rule.id] > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                {evidenceCounts[rule.id]} evidence
+                              </Badge>
+                            )}
                           </div>
                           <p className="font-medium">
                             <span className="text-muted-foreground">If/When:</span> {rule.ifWhen}

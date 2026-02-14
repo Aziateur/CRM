@@ -7,6 +7,7 @@ import { Topbar } from "@/components/topbar"
 import { DialContextPanel } from "@/components/dial-context-panel"
 import { DialScriptPanel } from "@/components/dial-script-panel"
 import { MissionControl } from "@/components/mission-control"
+import { CallPrepPanel } from "@/components/call-prep-panel"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useTasks } from "@/hooks/use-tasks"
@@ -689,6 +690,12 @@ export default function DialSessionPage() {
             <Progress value={progress} className="h-1.5" />
           </CardContent>
         </Card>
+
+        {/* Call Prep Panel — Playbook rules and stop signals */}
+        <CallPrepPanel
+          leadSegment={currentLead?.segment}
+          leadStage={currentLead?.stage}
+        />
 
         {currentLead ? (
           <>
