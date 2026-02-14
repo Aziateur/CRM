@@ -243,7 +243,28 @@ export default function DialSessionPage() {
 
   const handleStartSession = async () => {
     if (!selectedMode) return
-    await startPersistedSession(sessionTarget, selectedExperiment === "none" ? undefined : selectedExperiment, selectedMode)
+    const newSession = await startPersistedSession(sessionTarget, selectedExperiment === "none" ? undefined : selectedExperiment, selectedMode)
+
+    // Snapshot queue to dial_session_items
+    if (newSession && projectId && queue.length > 0) {
+      try {
+        const supabase = getSupabase()
+        const items = queue.map((item, idx) => ({
+          dial_session_id: newSession.id,
+          lead_id: item.lead.id,
+          position: idx,
+          source: item.source || selectedMode,
+          reason: item.reason,
+          task_id: item.task?.id || null,
+          status: "pending",
+          project_id: projectId,
+        }))
+        await supabase.from("dial_session_items").insert(items)
+      } catch (err) {
+        console.warn("[dial-session] Queue snapshot failed:", err)
+      }
+    }
+
     setSessionStartTime(new Date())
     setSessionAttempts([])
     setCurrentQueueIndex(0)
@@ -539,8 +560,8 @@ export default function DialSessionPage() {
                       type="button"
                       onClick={() => setSelectedMode(mode.id)}
                       className={`p-4 rounded-xl border-2 text-left transition-all ${selectedMode === mode.id
-                          ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                          : "border-border hover:border-primary/40 hover:bg-muted/50"
+                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                        : "border-border hover:border-primary/40 hover:bg-muted/50"
                         }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
