@@ -14,6 +14,8 @@ export interface EvidenceSnippet {
     transcriptLines?: number[]
 }
 
+export type DecisionType = "rule_draft" | "experiment" | "drill" | "no_decision"
+
 export interface QuickReviewInput {
     attemptId: string
     callSessionId?: string
@@ -21,6 +23,8 @@ export interface QuickReviewInput {
     marketInsight?: string
     promoteToPlaybook: boolean
     evidenceVerified: boolean
+    decisionType?: DecisionType
+    decisionPayload?: Record<string, unknown>
 }
 
 export interface DeepReviewInput {
@@ -31,6 +35,8 @@ export interface DeepReviewInput {
     responses: Record<string, unknown>        // field_key → value (score number, text string, etc.)
     evidenceSnippets?: EvidenceSnippet[]
     evidenceVerified: boolean
+    decisionType: DecisionType
+    decisionPayload: Record<string, unknown>
 }
 
 // Legacy deep review input (backward compat during transition)
@@ -71,6 +77,8 @@ export function useCallReviews() {
                             market_insight: input.marketInsight || null,
                             promote_to_playbook: input.promoteToPlaybook,
                             evidence_verified: input.evidenceVerified,
+                            decision_type: input.decisionType || null,
+                            decision_payload: input.decisionPayload || {},
                             project_id: projectId,
                         },
                     ])
@@ -135,6 +143,8 @@ export function useCallReviews() {
                             responses: input.responses,
                             evidence_snippets: input.evidenceSnippets ?? [],
                             evidence_verified: input.evidenceVerified,
+                            decision_type: input.decisionType,
+                            decision_payload: input.decisionPayload,
                             ...legacyScores,
                             project_id: projectId,
                         },

@@ -24,7 +24,7 @@ import {
 } from "lucide-react"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useLeads } from "@/hooks/use-leads"
-import { useCallReviews, type EvidenceSnippet } from "@/hooks/use-call-reviews"
+import { useCallReviews, type EvidenceSnippet, type DecisionType } from "@/hooks/use-call-reviews"
 import { useReviewTemplates, type ReviewField } from "@/hooks/use-review-templates"
 import { getSupabase } from "@/lib/supabase"
 import { useProjectId } from "@/hooks/use-project-id"
@@ -226,6 +226,10 @@ export default function ReviewPage() {
   // Evidence gating state
   const [showUnverifiedConfirm, setShowUnverifiedConfirm] = useState(false)
 
+  // Decision state (required for Deep Dive)
+  const [decisionType, setDecisionType] = useState<DecisionType | null>(null)
+  const [decisionReason, setDecisionReason] = useState("")
+
   // Initialize responses when template loads or call changes
   useEffect(() => {
     if (!activeDeepTemplate) return
@@ -336,6 +340,8 @@ export default function ReviewPage() {
     setPromoteToPlaybook(false)
     setShowPromotionModal(false)
     setShowUnverifiedConfirm(false)
+    setDecisionType(null)
+    setDecisionReason("")
     // Deep responses reset handled by useEffect on currentIndex change
   }
 
@@ -362,6 +368,8 @@ export default function ReviewPage() {
 
   const handleDeepSubmit = async () => {
     if (!currentCall || !activeDeepTemplate) return
+    // Gate: require decision
+    if (!decisionType) return
     // Gate: require explicit confirmation if no evidence
     if (!hasEvidence && !showUnverifiedConfirm) {
       setShowUnverifiedConfirm(true)
@@ -375,6 +383,10 @@ export default function ReviewPage() {
       responses,
       evidenceSnippets,
       evidenceVerified: hasEvidence,
+      decisionType,
+      decisionPayload: decisionType === "no_decision"
+        ? { reason: decisionReason }
+        : {},
     })
     setReviewedIds((prev) => new Set(prev).add(currentCall.attempt.id))
     resetForm()
@@ -798,6 +810,52 @@ export default function ReviewPage() {
                     </Card>
                   ))}
 
+                  {/* Decision Output — Required */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-purple-500" />
+                        What Next? <span className="text-red-500">*</span>
+                      </CardTitle>
+                      <CardDescription>Every review must produce a decision</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          { value: "rule_draft" as const, label: "📝 Rule Draft", desc: "Create or update a playbook rule" },
+                          { value: "experiment" as const, label: "🧪 Experiment", desc: "Test something specific next session" },
+                          { value: "drill" as const, label: "🎯 Drill", desc: "Assign a corrective drill" },
+                          { value: "no_decision" as const, label: "⏭️ No Decision", desc: "Nothing actionable (give reason)" },
+                        ]).map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setDecisionType(opt.value)}
+                            className={`p-3 rounded-lg border-2 text-left transition-all ${decisionType === opt.value
+                              ? "border-purple-500 bg-purple-50"
+                              : "border-border hover:border-purple-300"
+                              }`}
+                          >
+                            <p className="font-medium text-sm">{opt.label}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+                      {decisionType === "no_decision" && (
+                        <Textarea
+                          value={decisionReason}
+                          onChange={(e) => setDecisionReason(e.target.value)}
+                          placeholder="Why is there nothing actionable? e.g., Already covered by existing rules, clean execution..."
+                          rows={2}
+                          className="resize-none text-sm mt-2"
+                        />
+                      )}
+                      {!decisionType && (
+                        <p className="text-xs text-red-500 font-medium">Select a decision type to enable submission</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
                   {/* Evidence warning — Deep Dive */}
                   {!hasEvidence && currentCall && (
                     <div className="flex items-start gap-2 p-3 rounded-lg border border-red-300 bg-red-50/50 text-sm">
@@ -834,9 +892,13 @@ export default function ReviewPage() {
                       <SkipForward className="mr-2 h-4 w-4" />
                       Skip
                     </Button>
-                    <Button className="flex-1" onClick={handleDeepSubmit} disabled={saving}>
+                    <Button className="flex-1" onClick={handleDeepSubmit} disabled={saving || !decisionType}>
                       <Check className="mr-2 h-4 w-4" />
-                      {hasEvidence ? "Save Deep Review" : "Submit as Unverified…"}
+                      {!decisionType
+                        ? "Select Decision First"
+                        : hasEvidence
+                          ? "Save Deep Review"
+                          : "Submit as Unverified…"}
                     </Button>
                   </div>
                 </>
@@ -857,7 +919,7 @@ export default function ReviewPage() {
             </TabsContent>
           </Tabs>
         </div>
-      </div>
+      </div >
 
       {/* Promotion Modal */}
       {
