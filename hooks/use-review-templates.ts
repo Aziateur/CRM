@@ -59,56 +59,57 @@ export function useReviewTemplates() {
     const [templates, setTemplates] = useState<ReviewTemplate[]>([])
     const [loading, setLoading] = useState(true)
 
-    useEffect(() => {
+    const fetchTemplates = useCallback(async () => {
         if (!projectId) return
-        const fetch = async () => {
-            setLoading(true)
-            const supabase = getSupabase()
+        setLoading(true)
+        const supabase = getSupabase()
 
-            // Fetch active templates
-            const { data: tData } = await supabase
-                .from("review_templates")
-                .select("*")
-                .eq("project_id", projectId)
-                .eq("is_active", true)
-                .order("created_at", { ascending: false })
+        // Fetch active templates
+        const { data: tData } = await supabase
+            .from("review_templates")
+            .select("*")
+            .eq("project_id", projectId)
+            .eq("is_active", true)
+            .order("created_at", { ascending: false })
 
-            if (!tData || tData.length === 0) {
-                setTemplates([])
-                setLoading(false)
-                return
-            }
-
-            // Fetch fields for all templates
-            const templateIds = tData.map((t: Record<string, unknown>) => t.id as string)
-            const { data: fData } = await supabase
-                .from("review_fields")
-                .select("*")
-                .in("template_id", templateIds)
-                .order("sort_order", { ascending: true })
-
-            const fieldsByTemplate = new Map<string, ReviewField[]>()
-            for (const row of (fData ?? []) as Record<string, unknown>[]) {
-                const tid = row.template_id as string
-                if (!fieldsByTemplate.has(tid)) fieldsByTemplate.set(tid, [])
-                fieldsByTemplate.get(tid)!.push(mapField(row))
-            }
-
-            setTemplates(
-                (tData as Record<string, unknown>[]).map((t) => ({
-                    id: t.id as string,
-                    name: t.name as string,
-                    description: (t.description ?? null) as string | null,
-                    version: (t.version ?? 1) as number,
-                    isActive: (t.is_active ?? true) as boolean,
-                    appliesTo: (t.applies_to ?? "deep") as ReviewTemplate["appliesTo"],
-                    fields: fieldsByTemplate.get(t.id as string) ?? [],
-                })),
-            )
+        if (!tData || tData.length === 0) {
+            setTemplates([])
             setLoading(false)
+            return
         }
-        fetch()
+
+        // Fetch fields for all templates
+        const templateIds = tData.map((t: Record<string, unknown>) => t.id as string)
+        const { data: fData } = await supabase
+            .from("review_fields")
+            .select("*")
+            .in("template_id", templateIds)
+            .order("sort_order", { ascending: true })
+
+        const fieldsByTemplate = new Map<string, ReviewField[]>()
+        for (const row of (fData ?? []) as Record<string, unknown>[]) {
+            const tid = row.template_id as string
+            if (!fieldsByTemplate.has(tid)) fieldsByTemplate.set(tid, [])
+            fieldsByTemplate.get(tid)!.push(mapField(row))
+        }
+
+        setTemplates(
+            (tData as Record<string, unknown>[]).map((t) => ({
+                id: t.id as string,
+                name: t.name as string,
+                description: (t.description ?? null) as string | null,
+                version: (t.version ?? 1) as number,
+                isActive: (t.is_active ?? true) as boolean,
+                appliesTo: (t.applies_to ?? "deep") as ReviewTemplate["appliesTo"],
+                fields: fieldsByTemplate.get(t.id as string) ?? [],
+            })),
+        )
+        setLoading(false)
     }, [projectId])
+
+    useEffect(() => {
+        fetchTemplates()
+    }, [fetchTemplates])
 
     // Save a new template or update existing
     const saveTemplate = useCallback(
@@ -197,5 +198,5 @@ export function useReviewTemplates() {
         (t) => (t.appliesTo === "deep" || t.appliesTo === "both") && t.isActive,
     ) ?? null
 
-    return { templates, activeDeepTemplate, loading, saveTemplate }
+    return { templates, activeDeepTemplate, loading, saveTemplate, refetch: fetchTemplates }
 }

@@ -7,8 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertCircle, CheckCircle2, XCircle, RefreshCw } from "lucide-react"
 
+interface DiagnosticChecks {
+  env: { status: string; details: Record<string, string> }
+  supabase: { status: string; message: string }
+  build: { status: string; mode: string }
+  browser: { status: string; details: Record<string, unknown> }
+}
+
 export default function DiagnosisPage() {
-  const [checks, setChecks] = useState<any>({
+  const [checks, setChecks] = useState<DiagnosticChecks>({
     env: { status: 'pending', details: {} },
     supabase: { status: 'pending', message: '' },
     build: { status: 'pending', mode: '' },
@@ -36,9 +43,9 @@ export default function DiagnosisPage() {
         sbStatus = 'success'
         sbMessage = 'Connected successfully'
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       sbStatus = 'error'
-      sbMessage = `Client Init Failed: ${e.message}`
+      sbMessage = `Client Init Failed: ${e instanceof Error ? e.message : String(e)}`
     }
 
     // 3. Check Browser Environment
@@ -49,8 +56,8 @@ export default function DiagnosisPage() {
     }
 
     setChecks({
-      env: { 
-        status: envStatus, 
+      env: {
+        status: envStatus,
         details: {
           url: envVars.NEXT_PUBLIC_SUPABASE_URL ? 'Set ✅' : 'MISSING ❌',
           key: envVars.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Set ✅' : 'MISSING ❌'

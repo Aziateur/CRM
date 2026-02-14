@@ -88,5 +88,20 @@ export function useLeads(options: UseLeadsOptions = {}) {
     fetchLeads()
   }, [fetchLeads])
 
+  // Realtime: auto-sync when leads change in another tab/session
+  useEffect(() => {
+    if (!projectId) return
+    const supabase = getSupabase()
+    const channel = supabase
+      .channel(`leads_rt_${projectId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leads", filter: `project_id=eq.${projectId}` },
+        () => fetchLeads()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [projectId, fetchLeads])
+
   return { leads, setLeads, loading, error, refetch: fetchLeads, projectId }
 }

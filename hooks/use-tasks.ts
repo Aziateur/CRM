@@ -81,6 +81,21 @@ export function useTasks(options?: { leadId?: string }) {
     fetchTasks()
   }, [fetchTasks])
 
+  // Realtime: auto-sync when tasks change
+  useEffect(() => {
+    if (!projectId) return
+    const supabase = getSupabase()
+    const channel = supabase
+      .channel(`tasks_rt_${projectId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks", filter: `project_id=eq.${projectId}` },
+        () => fetchTasks()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [projectId, fetchTasks])
+
   const createTask = useCallback(async (input: CreateTaskInput): Promise<Task | null> => {
     if (!projectId) return null
     try {

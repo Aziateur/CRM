@@ -84,5 +84,20 @@ export function useAttempts() {
     fetchAttempts()
   }, [fetchAttempts])
 
+  // Realtime: auto-sync when attempts change
+  useEffect(() => {
+    if (!projectId) return
+    const supabase = getSupabase()
+    const channel = supabase
+      .channel(`attempts_rt_${projectId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attempts", filter: `project_id=eq.${projectId}` },
+        () => fetchAttempts()
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [projectId, fetchAttempts])
+
   return { attempts, setAttempts, loading, error, refetch: fetchAttempts, projectId }
 }

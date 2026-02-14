@@ -167,8 +167,8 @@ function EvidenceQuoteField({
                 type="button"
                 onClick={() => toggleLine(idx)}
                 className={`w-full text-left text-xs p-1.5 rounded transition-colors ${selectedLines.has(idx)
-                    ? "bg-amber-100 text-amber-900 font-medium"
-                    : "hover:bg-muted/50"
+                  ? "bg-amber-100 text-amber-900 font-medium"
+                  : "hover:bg-muted/50"
                   }`}
               >
                 <span className="text-muted-foreground font-mono mr-2">{idx + 1}</span>
@@ -261,18 +261,23 @@ export default function ReviewPage() {
 
   const currentCall = reviewableCalls[currentIndex] || null
 
-  // Fetch call sessions
+  // Fetch call sessions (view inherits project scope via call_sessions.project_id)
   useEffect(() => {
     if (!projectId) return
     const fetchSessions = async () => {
       const supabase = getSupabase()
+      // The view joins call_sessions which has project_id — but the view doesn't expose it.
+      // We filter by attempt_ids we already have (which are project-scoped from useAttempts).
+      const attemptIds = attempts.map((a) => a.id)
+      if (attemptIds.length === 0) return
       const { data } = await supabase
         .from("v_calls_with_artifacts")
         .select("call_session_id, attempt_id, recording_url, transcript_text")
+        .in("attempt_id", attemptIds)
       if (data) setCallSessions(data as CallSession[])
     }
     fetchSessions()
-  }, [projectId])
+  }, [projectId, attempts])
 
   // Reset form
   const resetForm = () => {
@@ -488,8 +493,8 @@ export default function ReviewPage() {
                           type="button"
                           onClick={() => toggleTag(tag.value)}
                           className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selectedTags.includes(tag.value)
-                              ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                            ? `${tag.color} ring-2 ring-offset-1 ring-primary/30`
+                            : "bg-muted text-muted-foreground hover:bg-muted/80"
                             }`}
                         >
                           {tag.label}
@@ -530,8 +535,8 @@ export default function ReviewPage() {
                         type="button"
                         onClick={() => setPromoteToPlaybook(!promoteToPlaybook)}
                         className={`w-full p-4 rounded-lg border-2 text-left transition-all ${promoteToPlaybook
-                            ? "border-yellow-500 bg-yellow-500/5"
-                            : "border-border hover:border-yellow-500/40"
+                          ? "border-yellow-500 bg-yellow-500/5"
+                          : "border-border hover:border-yellow-500/40"
                           }`}
                       >
                         <p className="font-medium text-sm">
@@ -700,8 +705,8 @@ export default function ReviewPage() {
                                       })
                                     }
                                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${selected.includes(opt.value)
-                                        ? `${opt.color ?? "bg-primary/10 text-primary"} ring-2 ring-offset-1 ring-primary/30`
-                                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                      ? `${opt.color ?? "bg-primary/10 text-primary"} ring-2 ring-offset-1 ring-primary/30`
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
                                       }`}
                                   >
                                     {opt.label}

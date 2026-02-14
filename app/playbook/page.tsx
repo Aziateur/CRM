@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useProjectId } from "@/hooks/use-project-id"
+import { PlaybookSkeleton } from "@/components/page-skeletons"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -55,6 +56,7 @@ export default function PlaybookPage() {
   const [rules, setRules] = useState<Rule[]>([])
   const [stopSignals, setStopSignals] = useState<StopSignal[]>([])
   const [evidenceCounts, setEvidenceCounts] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(true)
   const projectId = useProjectId()
 
   useEffect(() => {
@@ -69,28 +71,28 @@ export default function PlaybookPage() {
       ])
 
       if (rulesRes.data) {
-        setRules(rulesRes.data.map((r: any) => ({
-          id: r.id,
-          ifWhen: r.if_when || r.ifWhen,
-          then: r.then_action || r.then,
-          because: r.because,
-          confidence: r.confidence,
-          evidenceAttemptIds: r.evidence_attempt_ids || [],
-          isActive: r.is_active,
-          createdAt: r.created_at
+        setRules(rulesRes.data.map((r: Record<string, unknown>) => ({
+          id: r.id as string,
+          ifWhen: (r.if_when || r.ifWhen) as string,
+          then: (r.then_action || r.then) as string,
+          because: r.because as string,
+          confidence: r.confidence as RuleConfidence,
+          evidenceAttemptIds: (r.evidence_attempt_ids || []) as string[],
+          isActive: r.is_active as boolean,
+          createdAt: r.created_at as string
         })))
       }
 
       if (signalsRes.data) {
-        setStopSignals(signalsRes.data.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          description: s.description,
-          triggerCondition: s.trigger_condition || s.triggerCondition,
-          threshold: s.threshold,
-          windowSize: s.window_size || s.windowSize,
-          recommendedDrillId: s.recommended_drill_id || s.recommendedDrillId,
-          isActive: s.is_active
+        setStopSignals(signalsRes.data.map((s: Record<string, unknown>) => ({
+          id: s.id as string,
+          name: s.name as string,
+          description: s.description as string,
+          triggerCondition: (s.trigger_condition || s.triggerCondition) as string,
+          threshold: s.threshold as number,
+          windowSize: (s.window_size || s.windowSize) as number,
+          recommendedDrillId: (s.recommended_drill_id || s.recommendedDrillId) as string | undefined,
+          isActive: s.is_active as boolean
         })))
       }
 
@@ -102,6 +104,7 @@ export default function PlaybookPage() {
         })
         setEvidenceCounts(counts)
       }
+      setLoading(false)
     }
     fetchData()
   }, [projectId])
@@ -247,6 +250,15 @@ export default function PlaybookPage() {
     setStopSignals(stopSignals.map((s) => (s.id === editingSignal.id ? editingSignal : s)))
     setEditingSignal(null)
     setIsEditSignalOpen(false)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Topbar title="Playbook" />
+        <PlaybookSkeleton />
+      </div>
+    )
   }
 
   return (
@@ -450,7 +462,7 @@ export default function PlaybookPage() {
             <CardContent>
               <div className="space-y-4">
                 {stopSignals.map((signal) => {
-                  const drill = getDrillById(signal.recommendedDrillId)
+                  const drill = signal.recommendedDrillId ? getDrillById(signal.recommendedDrillId) : null
                   return (
                     <div
                       key={signal.id}

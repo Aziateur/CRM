@@ -319,7 +319,7 @@ export interface StopSignal {
   triggerCondition: string
   threshold: number
   windowSize: number
-  recommendedDrillId: string
+  recommendedDrillId?: string
   isActive: boolean
 }
 

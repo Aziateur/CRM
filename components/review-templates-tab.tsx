@@ -187,7 +187,7 @@ function FieldEditorRow({
 // ─── Main Component ───
 
 export function ReviewTemplatesTab() {
-    const { templates, saveTemplate, loading } = useReviewTemplates()
+    const { templates, saveTemplate, loading, refetch: refetchTemplates } = useReviewTemplates()
     const [editing, setEditing] = useState<string | null>(null) // template id or "new"
     const [name, setName] = useState("")
     const [description, setDescription] = useState("")
@@ -284,8 +284,8 @@ export function ReviewTemplatesTab() {
                 })),
             )
             setEditing(null)
-            // Force reload
-            window.location.reload()
+            // Refresh templates from DB instead of full page reload
+            await refetchTemplates()
         } finally {
             setSaving(false)
         }
