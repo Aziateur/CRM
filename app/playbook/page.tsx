@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useProjectId } from "@/hooks/use-project-id"
 import { PlaybookSkeleton } from "@/components/page-skeletons"
+import { RuleEvidenceDrawer } from "@/components/rule-evidence-drawer"
 import { Topbar } from "@/components/topbar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +58,7 @@ export default function PlaybookPage() {
   const [stopSignals, setStopSignals] = useState<StopSignal[]>([])
   const [evidenceCounts, setEvidenceCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [evidenceDrawer, setEvidenceDrawer] = useState<{ ruleId: string; summary: string } | null>(null)
   const projectId = useProjectId()
 
   useEffect(() => {
@@ -403,9 +405,17 @@ export default function PlaybookPage() {
                               {rule.confidence}
                             </Badge>
                             {evidenceCounts[rule.id] > 0 && (
-                              <Badge variant="outline" className="text-xs">
-                                {evidenceCounts[rule.id]} evidence
-                              </Badge>
+                              <button
+                                onClick={() => setEvidenceDrawer({
+                                  ruleId: rule.id,
+                                  summary: `If ${rule.ifWhen} → ${rule.then}`,
+                                })}
+                                className="cursor-pointer hover:scale-105 transition-transform"
+                              >
+                                <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 hover:bg-blue-50">
+                                  {evidenceCounts[rule.id]} evidence
+                                </Badge>
+                              </button>
                             )}
                           </div>
                           <p className="font-medium">
@@ -780,6 +790,15 @@ export default function PlaybookPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Evidence Drawer */}
+      {evidenceDrawer && (
+        <RuleEvidenceDrawer
+          ruleId={evidenceDrawer.ruleId}
+          ruleSummary={evidenceDrawer.summary}
+          onClose={() => setEvidenceDrawer(null)}
+        />
+      )}
     </div>
   )
 }
