@@ -1,198 +1,169 @@
-# CRM Project — Claude Code Instructions
+# CLAUDE.md
 
-## ⚠️ CRITICAL: Code Tab MCP Limitation
+## Project Context
+Dalio CRM is a sales pipeline management tool built for high-volume cold calling, with features for lead tracking, dial sessions, batch review, playbooks, and experiment-driven sales improvement.
 
-This Code tab does **NOT** have MCP tools. MCP tools live in **Cowork** only.
+## Tech Stack
+- Framework: Next.js 15 (App Router, static export via Cloudflare Pages)
+- Language: TypeScript (strict)
+- Database: Supabase (PostgreSQL with custom auth via RPC, not Supabase Auth)
+- Styling: Tailwind CSS + shadcn/ui components
+- Hosting: Cloudflare Pages (sandbox branch auto-deploys)
+- Automation: N8N (external, webhook-based)
 
-When a task needs external APIs (GitHub API beyond git, Supabase admin, Cloudflare DNS, error tracking):
-1. **Do NOT** install MCP servers, create `.mcp.json`, or run `claude mcp add`
-2. **Draft a Cowork prompt** for the user to paste into the Cowork tab
+## Key Directories
+- `app/` — Next.js App Router pages (Leads, Dashboard, Dial Session, Batch Review, Playbook, Settings, Admin, Debug)
+- `components/` — React components (UI primitives in `components/ui/`, feature components at root)
+- `hooks/` — Custom React hooks (`use-leads`, `use-attempts`, `use-tasks`, `use-project-id`, etc.)
+- `lib/` — Core libraries (`auth-context.tsx`, `supabase.ts`, `store.ts` with types/enums)
+- `supabase/migrations/` — SQL migration files (21 files, applied sequentially)
+- `scripts/` — Utility scripts (e.g., `seed-users.ts`)
+- `.agent/workflows/` — Agent workflow definitions
 
-### Cowork handoff template
-```
-Hey, I need you to [action] using [Rube / Supabase MCP / etc].
-Context: [details, IDs, file names]
-Expected output: [what to bring back]
-```
-
----
-
-## Project Architecture
-
-### Stack (exact versions matter)
-- **Next.js 15.5.10** — STATIC EXPORT (SPA). No SSR, no API routes, no server actions.
-- **React 19** — UI rendering
-- **TypeScript** — strict mode, entire frontend
-- **Tailwind CSS** — styling
-- **shadcn/ui** — component library
-- **Supabase (PostgreSQL)** — database only. No Supabase Auth in use.
-- **n8n** — workflow automation, processes OpenPhone webhooks
-- **Cloudflare Pages** — production hosting, auto-deploys from git
-- **OpenPhone** — phone/SMS (integrated via n8n webhooks, no direct API)
-
-### ❌ NEVER DO THESE (common Claude Code mistakes)
-
-1. **Do NOT use `getServerSideProps`, `getStaticProps`, server actions, or API routes** — this is a static export SPA. There is no Node.js server at runtime. Everything runs client-side.
-2. **Do NOT use `next/headers`, `next/cookies`, or any server-only imports** — static export means no request/response cycle on the server.
-3. **Do NOT create `app/api/` route handlers** — there is no server to run them. External calls go through Supabase client SDK or n8n webhooks.
-4. **Do NOT use Supabase Auth** — there is no auth system in this project currently. Don't add auth middleware, session checks, or RLS policies based on auth.
-5. **Do NOT use `createServerClient()` from `@supabase/ssr`** — no server. Use `createClient()` from `@supabase/supabase-js` directly (browser client).
-6. **Do NOT add `middleware.ts`** — static exports don't support Next.js middleware.
-7. **Do NOT use `revalidatePath`, `revalidateTag`, or ISR** — no server-side rendering or caching.
-8. **Do NOT use `next/image` with loader** — static export requires `unoptimized: true` in next.config or use regular `<img>` tags.
-9. **Do NOT create `.mcp.json` files or run `claude mcp add`** — this crashes the Code tab.
-10. **Do NOT use `require()` syntax** — TypeScript project, always use ES module `import`.
-
-### ✅ HOW THINGS ACTUALLY WORK
-
-**Data fetching**: All Supabase queries happen client-side via `@supabase/supabase-js`. Use `useEffect` + `useState` or a data fetching hook (React Query / SWR if available, otherwise raw useEffect).
-
-**Supabase client**: One shared instance created with `createClient(SUPABASE_URL, SUPABASE_ANON_KEY)`. Never instantiate multiple clients. Import from the shared helper.
-
-**Routing**: Next.js App Router with `output: 'export'` in `next.config.mjs`. All pages are statically generated at build time. Dynamic routes need `generateStaticParams()`.
-
-**External integrations**: OpenPhone → n8n webhook → Supabase (n8n writes to DB, frontend reads from DB). The frontend never calls OpenPhone directly.
-
-**Environment variables**: Only `NEXT_PUBLIC_*` vars work in static export (they're baked into the JS bundle at build time). Never reference `process.env.SECRET_*` — it won't exist at runtime.
-
-**Deployment**: Push to GitHub → Cloudflare Pages auto-builds and deploys. No manual deploy step.
-
-### Code Conventions
-
-- `"use client"` — most components need this since we're an SPA. But keep it at the page/layout level, not on every tiny component.
-- Import paths: `@/` alias maps to project root (e.g., `@/components/ui/button`, `@/lib/supabase`)
-- Files: `kebab-case.tsx` — Components: `PascalCase`
-- TypeScript: `interface` for object shapes, `type` for unions/primitives
-- Always type Supabase responses with generated types from `database.types.ts`
-- Error handling: try/catch around all Supabase calls, surface errors via toast, never silently swallow
-- Use `cn()` from `lib/utils.ts` for conditional Tailwind classes
-
-### shadcn/ui Patterns
-
-- `components/ui/` = shadcn primitives (don't modify)
-- `components/` = your custom compositions of shadcn primitives
-- Forms: shadcn `<Form>` + react-hook-form + zod
-- Tables: shadcn `<DataTable>` + @tanstack/react-table
-- Modals: shadcn `<Dialog>` — never build custom modals
-- Toasts: `useToast()` hook + `<Toaster>`
-
-### SQL & Database
-
-- Language: PostgreSQL (via Supabase)
-- Migrations go in `supabase/migrations/` with timestamp prefix
-- After schema changes, regenerate types: `npx supabase gen types typescript --project-id <ID> > lib/types/database.types.ts`
-- No RLS policies tied to auth (no auth). If RLS is enabled on a table, it uses anon key permissions.
-- Triggers and views are defined in migration SQL files
-
-### n8n Workflows
-
-- n8n is self-hosted, handles webhook processing
-- OpenPhone sends webhooks to n8n → n8n processes and writes to Supabase
-- Workflow definitions are JSON. If editing n8n workflows, the format is specific to n8n — don't invent fields.
-- To trigger or check workflows programmatically, hand off to Cowork (n8n MCP tools)
-
-### Git Workflow
-
-- `main` = production (auto-deploys to Cloudflare Pages)
-- Feature branches: `feature/short-description`
-- Bug fixes: `fix/short-description`
-- Never push directly to main — always PR
-- Commit messages: conventional commits (`feat:`, `fix:`, `chore:`, `refactor:`)
-
-### Common Commands
-
-```bash
-npm run dev          # Dev server at localhost:3000
-npm run build        # Static export build (catches errors that dev doesn't)
-npm run lint         # ESLint
-npx tsc --noEmit     # Type check without emitting
-```
-
-### Key Files
-- `next.config.mjs` — has `output: 'export'`, `images: { unoptimized: true }`
-- `lib/supabase.ts` — shared Supabase browser client
-- `lib/types/database.types.ts` — auto-generated DB types
-- `components/ui/` — shadcn primitives (don't modify)
-- `components/` — custom components
-- `app/` — main app routes (Next.js App Router)
-- `hooks/` — custom React hooks
-- `styles/` — global styles
-- `supabase/migrations/` — SQL migrations
-- `.env.local` — NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+## Commands
+- `npm run dev` — Start dev server (localhost:3000)
+- `npm run build` — Build for production (static export)
+- `npm run lint` — Run ESLint
+- No test suite configured yet
 
 ---
 
-## Tool Arsenal (Cowork Only)
+## How I Want You to Work
 
-### Supabase
-| Tool | Purpose |
-|------|---------|  
-| `SUPABASE_BETA_RUN_SQL_QUERY` | Execute SQL against Postgres |
-| `SUPABASE_GET_TABLE_SCHEMAS` | Get column/type/constraint info |
-| `SUPABASE_LIST_TABLES` | List all tables |
-| `SUPABASE_SELECT_FROM_TABLE` | Query rows with filters |
-| `SUPABASE_GENERATE_TYPE_SCRIPT_TYPES` | Regenerate TS types from DB |
-| `SUPABASE_GETS_PROJECT_S_SERVICE_HEALTH_STATUS` | Check DB/API health |
-| `SUPABASE_GETS_PROJECT_S_POSTGRES_CONFIG` | View Postgres config |
+### Before Coding
+- Ask clarifying questions before starting
+- Draft a plan for complex work and confirm before coding
+- If unsure, ask — don't assume
 
-### GitHub
-| Tool | Purpose |
-|------|---------|  
-| `GITHUB_CREATE_A_PULL_REQUEST` | Open PRs |
-| `GITHUB_CREATE_AN_ISSUE` | File issues |
-| `GITHUB_LIST_CODE_SCANNING_ALERTS_FOR_A_REPOSITORY` | View code quality alerts |
-| `GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY` | Check CI/CD run status |
-| `GITHUB_LIST_CHECK_RUNS_FOR_A_REF` | Check build pass/fail for a commit |
-| `GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS` | Search issues/PRs |
-| `GITHUB_GRAPHQL_API` | Arbitrary GitHub API queries |
+### While Coding
+- Write complete, working code — no placeholders, no TODOs
+- Keep it simple and readable over clever
+- Follow existing patterns in the codebase
+- One change at a time, verify as you go
 
-### Cloudflare
-| Tool | Purpose |
-|------|---------|  
-| `CLOUDFLARE_LIST_DNS_RECORDS` | View DNS records |
-| `CLOUDFLARE_CREATE_DNS_RECORD` | Add records |
-| `CLOUDFLARE_UPDATE_DNS_RECORD` | Modify records |
-| `CLOUDFLARE_LIST_ZONES` | List domains |
+### After Coding
+- Run `npm run build` to verify changes compile
+- Run linter/formatter before finishing
+- Summarize what you changed and why
 
-### Sentry (Error Tracking & Debugging — Native MCP)
-Sentry MCP is connected directly to Cowork (not through Rube). It provides:
-- **Error search**: Find errors by message, file, frequency, user impact
-- **Stack traces**: Full stack traces with exact file and line numbers
-- **Seer AI**: Automated root cause analysis and fix suggestions
-- **Release tracking**: See which deploy introduced a bug
-- **Performance monitoring**: Slow queries, transaction traces
+## TypeScript Idioms
 
-Use Sentry to: investigate production errors, check if a deploy broke something, find recurring bugs before users report them, get AI-generated fix suggestions.
-
-### GitHub (Native MCP — not Rube)
-GitHub MCP is connected directly to Cowork. It provides:
-- **Repo access**: Browse code, search files, read commits
-- **Issues & PRs**: Create, update, review, merge
-- **CI/CD**: Check GitHub Actions status, analyze build failures
-- **Code scanning**: Security alerts, Dependabot alerts
-- **Releases**: Create and manage releases
-
-### Cowork Native MCP (also available)
-- **Supabase**: `execute_sql`, `apply_migration`, `list_tables`, `generate_typescript_types`, `deploy_edge_function`, `get_logs`
-- **Cloudflare**: `workers_list`, `d1_database_query`, `kv_namespaces_list`, `search_cloudflare_documentation`
-- **n8n**: `search_workflows`, `execute_workflow`, `get_workflow_details`
+Follow the TypeScript language idioms guide at `docs/typescript-idioms.md`. Key rules:
+- `const` by default, `let` only when unavoidable, `var` never
+- `unknown` over `any` — narrow explicitly
+- `as const` objects over enums
+- `??` over `||` for defaults
+- Spread to copy — never mutate the original
+- Annotate at boundaries, infer the rest
+- Named exports over default exports (except Next.js pages)
+- Arrow functions for callbacks, `function` for top-level declarations
 
 ---
 
-## When to Hand Off to Cowork
+## Code Style
+- Use ES modules (import/export)
+- Functional components with hooks
+- Type hints on all functions
+- Descriptive variable names
+- No commented-out code
+- Use `"use client"` directive on all interactive components
 
-| Need | Code Tab does it | Cowork does it |
-|------|-----------------|----------------|
-| Write/fix code | ✅ | — |
-| Git commit, push, branch | ✅ | — |
-| Run build/lint/typecheck | ✅ | — |
-| Create GitHub issue/PR via API | ❌ → draft prompt | ✅ |
-| Query Supabase data | ❌ → draft prompt | ✅ |
-| Run SQL migration | ❌ → draft prompt | ✅ |
-| Regenerate DB types | ❌ → draft prompt | ✅ |
-| Update DNS | ❌ → draft prompt | ✅ |
-| Check error logs (Sentry) | ❌ → draft prompt | ✅ |
-| Get AI root cause analysis | ❌ → draft prompt | ✅ Sentry Seer |
-| Browse repo / read code | ❌ → draft prompt | ✅ GitHub MCP |
-| Trigger n8n workflow | ❌ → draft prompt | ✅ |
-| Check CI status | ❌ → draft prompt | ✅ |
+## Do Not
+- Rewrite entire shared layout files (sidebar, auth-gate, layout) — use surgical edits only
+- Commit directly to main — always push to `sandbox`
+- Leave placeholder code or TODOs
+- Make changes outside the scope of the task
+- Assume — ask if unclear
+- Paste sub-agent output directly into source files without stripping markdown
+- Include `console.log` statements in production code
+
+---
+
+## Verification Loop
+After completing a task, verify:
+1. Code compiles without errors (`npm run build`)
+2. Sidebar navigation has all 7 links: Leads, Dashboard, Playbook, Dial Session, Batch Review, Settings, Admin
+3. No markdown artifacts (```) in `.tsx`/`.ts` files
+4. No linting warnings
+5. Changes match the original request
+
+If any fail, fix before marking complete.
+
+---
+
+## Quick Commands
+When I type these shortcuts, do the following:
+
+**"plan"** — Analyze the task, draft an approach, ask clarifying questions, don't write code yet
+
+**"build"** — Implement the plan, run tests, verify it works
+
+**"check"** — Review your changes like a skeptical senior dev. Check for bugs, edge cases, and code quality
+
+**"verify"** — Run build and linting, summarize results
+
+**"done"** — Summarize what changed, what was tested, and any notes for me
+
+---
+
+## Success Criteria
+A task is complete when:
+- [ ] Code works as requested
+- [ ] Build passes
+- [ ] No errors or warnings
+- [ ] Changes are minimal and focused
+- [ ] I can understand what you did without explanation
+
+---
+
+## Architecture Notes
+
+### Authentication
+- Custom auth, NOT Supabase Auth. Uses `authenticate()` and `register_user()` RPCs with bcrypt.
+- Sessions stored in `sessions` table with UUID tokens and 30-day sliding expiry.
+- Session token stored in `localStorage` as `dalio_session_token` and sent via `x-session-token` header.
+- `get_session_user()` PL/pgSQL function extracts user ID from the header for RLS.
+- `validate_session()` RPC validates and extends session on page reload.
+
+### Multi-Tenancy
+- All data tables have a `project_id` column.
+- RLS policies use `is_member_of(project_id)` which checks `user_projects` membership.
+- `useProjectId()` hook provides the active project ID to all data hooks.
+
+### User Roles
+- `system_role` column on `users` table: `'admin'` or `'user'`.
+- Admin link in sidebar only visible to admins.
+- `/admin` page has client-side route protection.
+- RLS policy allows admins to SELECT all users.
+
+### Sidebar Navigation (CRITICAL — do not alter without checking)
+The sidebar must always contain these items in this order:
+1. Leads (`/` — root page, main CRM table/kanban)
+2. Dashboard (`/dashboard` — analytics widgets)
+3. Playbook (`/playbook` — templates and sequences)
+4. Dial Session (`/dial-session` — the dialer)
+5. Batch Review (`/batch-review` — call analysis)
+6. Settings (`/settings` — pipeline, automation, profile)
+7. Admin (`/admin` — user management, admin-only)
+
+### Debugging Protocol (MANDATORY)
+
+When fixing bugs, follow `.agent/workflows/fix.md`. Key rules:
+
+1. **Severity First** — Classify as Level 1–5. Fix Level 5 (core UX broken) before touching anything else. NEVER merge branches, refactor, or do housekeeping during an active bug.
+2. **Query Before You Fix** — Run a diagnostic query that proves your hypothesis. If it doesn't confirm, re-diagnose. Do NOT write code until the root cause is proven.
+3. **Trace the Data Path** — For "X doesn't show" bugs, trace: `DB Table → View/JOIN → RLS → API Query → Hook → Component`. Find the exact broken link.
+4. **One Fix, One Verify** — After every fix, verify with the same diagnostic query. If the bug persists, the fix was wrong — go back to diagnosis. Do NOT move on.
+5. **No Side Quests** — Do not merge branches, create docs, investigate tooling, or fix "related" issues until the reported bug is confirmed fixed.
+
+**Supabase-specific**: If data exists in DB but not in UI, check in this order:
+- `project_id` is NOT NULL (RLS hides NULL project_id records)
+- JOINs are intact (e.g., `call_sessions.attempt_id` links to `attempts.id`)
+- The hook filters by the correct `project_id`
+
+### Known Gotchas
+- `REVOKE SELECT ON users FROM anon` was applied in migration `000000`. Admin policies and `updateUser` may conflict with this. Profile updates use direct table UPDATE which requires RLS UPDATE policy.
+- The `/debug` page is accessible in production (no auth gate). Consider removing or protecting.
+- Seed script (`scripts/seed-users.ts`) requires `DATABASE_URL` pointing to the remote Supabase database, not localhost.
+- Supabase client is a singleton; call `resetSupabaseClient()` after login/logout to pick up the new session token header.
+- **Call recordings**: `v_attempts_enriched` joins `call_sessions` on `attempt_id`. If `attempt_id` is NULL, recordings/transcripts won't show. The webhook creates call_sessions separately — they must be linked to attempts via phone number + timestamp matching.
