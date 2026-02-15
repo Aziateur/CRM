@@ -46,14 +46,56 @@ function FieldEditorRow({
     index,
     onUpdate,
     onDelete,
+    autoExpand,
 }: {
     field: EditableField
     index: number
     onUpdate: (patch: Partial<EditableField>) => void
     onDelete: () => void
+    autoExpand?: boolean
 }) {
-    const [expanded, setExpanded] = useState(false)
+    const [expanded, setExpanded] = useState(autoExpand ?? false)
     const anchors = (field.config.anchors ?? {}) as Record<string, string>
+    const options = (field.config.options ?? []) as { value: string; label: string; color?: string }[]
+
+    // Reset config when field type changes
+    const handleTypeChange = (newType: EditableField["fieldType"]) => {
+        let newConfig: Record<string, unknown> = {}
+        switch (newType) {
+            case "score":
+                newConfig = { min: 1, max: 5, anchors: {} }
+                break
+            case "text":
+                newConfig = { placeholder: "" }
+                break
+            case "multi_select":
+                newConfig = { options: [] }
+                break
+            case "checkbox":
+                newConfig = { description: "" }
+                break
+            case "evidence_quote":
+                newConfig = { prompt: "" }
+                break
+        }
+        onUpdate({ fieldType: newType, config: newConfig })
+        setExpanded(true) // auto-expand for configuration
+    }
+
+    const addOption = () => {
+        const newOptions = [...options, { value: `option_${options.length + 1}`, label: "", color: undefined }]
+        onUpdate({ config: { ...field.config, options: newOptions } })
+    }
+
+    const updateOption = (idx: number, patch: Partial<{ value: string; label: string; color?: string }>) => {
+        const newOptions = options.map((o, i) => i === idx ? { ...o, ...patch } : o)
+        onUpdate({ config: { ...field.config, options: newOptions } })
+    }
+
+    const removeOption = (idx: number) => {
+        const newOptions = options.filter((_, i) => i !== idx)
+        onUpdate({ config: { ...field.config, options: newOptions } })
+    }
 
     return (
         <div className="border rounded-lg p-3 space-y-3">
@@ -68,7 +110,7 @@ function FieldEditorRow({
                 />
                 <Select
                     value={field.fieldType}
-                    onValueChange={(v) => onUpdate({ fieldType: v as EditableField["fieldType"] })}
+                    onValueChange={handleTypeChange}
                 >
                     <SelectTrigger className="w-36 h-8">
                         <SelectValue />
@@ -84,8 +126,9 @@ function FieldEditorRow({
                 <Input
                     value={field.section}
                     onChange={(e) => onUpdate({ section: e.target.value })}
-                    placeholder="Section"
+                    placeholder="Section (e.g. General)"
                     className="h-8 w-28"
+                    onFocus={(e) => e.target.select()}
                 />
                 <button
                     onClick={() => setExpanded(!expanded)}
@@ -161,6 +204,66 @@ function FieldEditorRow({
                                 onChange={(e) =>
                                     onUpdate({ config: { ...field.config, placeholder: e.target.value } })
                                 }
+                                placeholder="e.g., Describe what you observed..."
+                                className="h-8 text-xs"
+                            />
+                        </div>
+                    )}
+
+                    {/* Multi-select: options editor */}
+                    {field.fieldType === "multi_select" && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold">Options</Label>
+                                <Button size="sm" variant="outline" onClick={addOption} className="h-6 gap-1 text-xs px-2">
+                                    <Plus className="h-3 w-3" />
+                                    Add Option
+                                </Button>
+                            </div>
+                            {options.length === 0 && (
+                                <p className="text-[10px] text-muted-foreground italic">
+                                    No options yet — add at least one for the multi-select to work
+                                </p>
+                            )}
+                            {options.map((opt, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                    <Input
+                                        value={opt.label}
+                                        onChange={(e) => {
+                                            const label = e.target.value
+                                            const value = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+                                            updateOption(idx, { label, value: value || opt.value })
+                                        }}
+                                        placeholder="Option label"
+                                        className="h-7 text-xs flex-1"
+                                    />
+                                    <Input
+                                        value={opt.value}
+                                        onChange={(e) => updateOption(idx, { value: e.target.value })}
+                                        placeholder="value_key"
+                                        className="h-7 text-xs w-28 font-mono"
+                                    />
+                                    <button
+                                        onClick={() => removeOption(idx)}
+                                        className="text-muted-foreground hover:text-red-500 p-0.5 shrink-0"
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Checkbox-specific: description */}
+                    {field.fieldType === "checkbox" && (
+                        <div>
+                            <Label className="text-xs">Help text / description</Label>
+                            <Input
+                                value={(field.config.description as string) ?? ""}
+                                onChange={(e) =>
+                                    onUpdate({ config: { ...field.config, description: e.target.value } })
+                                }
+                                placeholder="e.g., Check if the rep followed the call script"
                                 className="h-8 text-xs"
                             />
                         </div>
@@ -252,7 +355,7 @@ export function ReviewTemplatesTab() {
                 key: `field_${prev.length + 1}`,
                 label: "",
                 fieldType: "score" as const,
-                section: "General",
+                section: "",
                 config: { min: 1, max: 5, anchors: {} },
                 isRequired: false,
             },
@@ -499,6 +602,7 @@ export function ReviewTemplatesTab() {
                             index={i}
                             onUpdate={(patch) => updateField(i, patch)}
                             onDelete={() => deleteField(i)}
+                            autoExpand={!field.label}
                         />
                     ))}
                     {fields.length === 0 && (
