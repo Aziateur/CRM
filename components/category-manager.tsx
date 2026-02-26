@@ -15,6 +15,16 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Plus, Pencil, Trash2, Loader2, GripVertical } from "lucide-react"
 import { CategoryIcon, IconPicker } from "@/components/category-icon"
 
@@ -213,6 +223,7 @@ export function CategoryManager({
     const { toast } = useToast()
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
 
     const handleAdd = (data: { name: string; icon: string; color?: string; description?: string }) => {
         addCategory.mutate(data, {
@@ -254,10 +265,20 @@ export function CategoryManager({
     const handleDelete = (id: string) => {
         const cat = categories.find((c) => c.id === id)
         if (!cat) return
-        if (!confirm(`Delete "${cat.name}"? This cannot be undone. Consider archiving instead.`)) return
-        removeCategory.mutate(id, {
-            onSuccess: () => toast({ title: "Deleted", description: `${cat.name} removed` }),
-            onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+        setDeleteTarget(cat)
+    }
+
+    const confirmDelete = () => {
+        if (!deleteTarget) return
+        removeCategory.mutate(deleteTarget.id, {
+            onSuccess: () => {
+                toast({ title: "Deleted", description: `${deleteTarget.name} removed` })
+                setDeleteTarget(null)
+            },
+            onError: (e) => {
+                toast({ title: "Error", description: e.message, variant: "destructive" })
+                setDeleteTarget(null)
+            },
         })
     }
 
@@ -330,6 +351,24 @@ export function CategoryManager({
                     iconPreset={iconPreset}
                 />
             )}
+
+            {/* Delete confirmation */}
+            <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete &ldquo;{deleteTarget?.name}&rdquo;?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently remove this category. Consider archiving (toggling off) instead if you want to keep the data.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }

@@ -201,35 +201,6 @@ export async function fetchCategories(projectId: string, categoryType: string): 
         return []
     }
 
-    // Auto-insert any missing category slugs for this type
-    const seeds = DEFAULT_SEEDS[categoryType]
-    if (seeds && seeds.length > 0) {
-        const existingSlugs = new Set(data.map((r: Record<string, unknown>) => r.slug as string))
-        const missing = seeds.filter(s => !existingSlugs.has(s.slug))
-        if (missing.length > 0) {
-            const rows = missing.map((s) => ({
-                project_id: projectId,
-                type: s.categoryType,
-                category_type: s.categoryType,
-                name: s.name,
-                slug: s.slug,
-                icon: s.icon,
-                color: s.color,
-                description: s.description,
-                sort_order: s.sortOrder,
-                is_active: s.isActive,
-                metadata: s.metadata,
-            }))
-            const { data: inserted, error: insertErr } = await supabase
-                .from("categories")
-                .insert(rows)
-                .select("*")
-            if (!insertErr && inserted) {
-                return [...data, ...inserted].map(rowToCategory).sort((a, b) => a.sortOrder - b.sortOrder)
-            }
-        }
-    }
-
     return data.map(rowToCategory)
 }
 
