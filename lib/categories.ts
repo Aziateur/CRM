@@ -296,15 +296,23 @@ export async function updateCategory(
 export async function deleteCategory(id: string): Promise<void> {
     const supabase = getSupabase()
 
-    // Clear FK references in child tables before deleting
-    // friction_logs.category_id → null
+    // Clear ALL FK references in child tables before deleting
+    // friction_logs
     await supabase.from("friction_logs").update({ category_id: null }).eq("category_id", id)
-    // friction_logs.root_cause_id → null (categories also used as root causes)
     await supabase.from("friction_logs").update({ root_cause_id: null }).eq("root_cause_id", id)
-    // intel_entries.intel_category_id → null
+    // intel_entries (3 FKs)
     await supabase.from("intel_entries").update({ intel_category_id: null }).eq("intel_category_id", id)
-    // kb_entries.category_id → null
+    await supabase.from("intel_entries").update({ industry_id: null }).eq("industry_id", id)
+    await supabase.from("intel_entries").update({ segment_id: null }).eq("segment_id", id)
+    // kb_entries
     await supabase.from("kb_entries").update({ category_id: null }).eq("category_id", id)
+    // segment_entries (2 FKs)
+    await supabase.from("segment_entries").update({ segment_id: null }).eq("segment_id", id)
+    await supabase.from("segment_entries").update({ section_type_id: null }).eq("section_type_id", id)
+    // kb_script_sections
+    await supabase.from("kb_script_sections").update({ section_type_id: null }).eq("section_type_id", id)
+    // categories self-ref (parent_id)
+    await supabase.from("categories").update({ parent_id: null }).eq("parent_id", id)
 
     const { error } = await supabase.from("categories").delete().eq("id", id)
     if (error) {
