@@ -198,6 +198,7 @@ export interface FieldDefinition {
   fieldType: FieldType
   options?: string[]
   isRequired: boolean
+  isPromoted: boolean
   position: number
   createdAt: string
 }

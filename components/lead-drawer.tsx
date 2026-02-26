@@ -213,9 +213,17 @@ export function LeadDrawer({
 
   const handleCustomFieldChange = async (fieldKey: string, value: unknown) => {
     if (!editedLead) return
-    const newCustomFields = { ...(editedLead.customFields || {}), [fieldKey]: value }
-    setEditedLead({ ...editedLead, customFields: newCustomFields })
-    await autoSave("custom_fields", newCustomFields)
+    const fieldDef = fieldDefinitions.find((f) => f.fieldKey === fieldKey)
+    if (fieldDef?.isPromoted) {
+      // Promoted field — save directly to column
+      setEditedLead({ ...editedLead, [fieldKey]: value })
+      await autoSave(fieldKey, value)
+    } else {
+      // Regular custom field — save into custom_fields JSONB
+      const newCustomFields = { ...(editedLead.customFields || {}), [fieldKey]: value }
+      setEditedLead({ ...editedLead, customFields: newCustomFields })
+      await autoSave("custom_fields", newCustomFields)
+    }
   }
 
   const handleAddContact = async () => {
@@ -485,15 +493,20 @@ export function LeadDrawer({
                     {/* Dynamic Custom Fields */}
                     {fieldDefinitions.length > 0 && (
                       <div className="space-y-3">
-                        {fieldDefinitions.map((field) => (
-                          <DynamicFieldRenderer
-                            key={field.id}
-                            field={field}
-                            value={ed.customFields?.[field.fieldKey] ?? null}
-                            onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
-                            readOnly={false}
-                          />
-                        ))}
+                        {fieldDefinitions.map((field) => {
+                          const fieldValue = field.isPromoted
+                            ? (ed as unknown as Record<string, unknown>)[field.fieldKey] ?? null
+                            : ed.customFields?.[field.fieldKey] ?? null
+                          return (
+                            <DynamicFieldRenderer
+                              key={field.id}
+                              field={field}
+                              value={fieldValue}
+                              onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
+                              readOnly={false}
+                            />
+                          )
+                        })}
                       </div>
                     )}
 

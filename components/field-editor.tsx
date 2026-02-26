@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Plus, MoreHorizontal, Pencil, Trash2, Search, X, GripVertical } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Search, X, GripVertical, ArrowUpCircle, Loader2 } from "lucide-react"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import type { FieldType, FieldDefinition } from "@/lib/store"
 
@@ -110,9 +110,8 @@ function OptionsManager({
               onDragStart={() => handleDragStart(i)}
               onDragOver={(e) => handleDragOver(e, i)}
               onDragEnd={handleDragEnd}
-              className={`flex items-center gap-2 px-3 py-2 group hover:bg-muted/50 transition-colors ${
-                dragIdx === i ? "opacity-50" : ""
-              }`}
+              className={`flex items-center gap-2 px-3 py-2 group hover:bg-muted/50 transition-colors ${dragIdx === i ? "opacity-50" : ""
+                }`}
             >
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab shrink-0" />
               <span className="text-sm text-muted-foreground w-5 tabular-nums">{i + 1}</span>
@@ -157,7 +156,7 @@ function OptionsManager({
 }
 
 function FieldList({ entityType }: { entityType: string }) {
-  const { fields, loading, createField, updateField, deleteField } = useFieldDefinitions(entityType)
+  const { fields, loading, createField, updateField, deleteField, promoteField } = useFieldDefinitions(entityType)
   const [search, setSearch] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [editingField, setEditingField] = useState<FieldDefinition | null>(null)
@@ -165,14 +164,16 @@ function FieldList({ entityType }: { entityType: string }) {
   const [formType, setFormType] = useState<FieldType>("text")
   const [formRequired, setFormRequired] = useState(false)
   const [formOptions, setFormOptions] = useState<string[]>([])
+  const [promoteTarget, setPromoteTarget] = useState<FieldDefinition | null>(null)
+  const [promoting, setPromoting] = useState(false)
 
   const entityLabel = ENTITY_TYPES.find((e) => e.key === entityType)?.label ?? entityType
 
   const filtered = search
     ? fields.filter((f) =>
-        f.fieldLabel.toLowerCase().includes(search.toLowerCase()) ||
-        f.fieldKey.toLowerCase().includes(search.toLowerCase())
-      )
+      f.fieldLabel.toLowerCase().includes(search.toLowerCase()) ||
+      f.fieldKey.toLowerCase().includes(search.toLowerCase())
+    )
     : fields
 
   const showOptions = formType === "select" || formType === "multi_select"
@@ -256,9 +257,10 @@ function FieldList({ entityType }: { entityType: string }) {
         </div>
 
         <div className="border rounded-lg">
-          <div className="grid grid-cols-[2.5rem_1fr_8rem_2.5rem] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_2.5rem] gap-2 px-4 py-2 border-b bg-muted/50 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <span>#</span>
             <span>Name</span>
+            <span>Status</span>
             <span>Type</span>
             <span></span>
           </div>
@@ -266,7 +268,7 @@ function FieldList({ entityType }: { entityType: string }) {
             {filtered.map((field, i) => (
               <div
                 key={field.id}
-                className="grid grid-cols-[2.5rem_1fr_8rem_2.5rem] gap-2 px-4 py-3 items-center group hover:bg-muted/50 transition-colors"
+                className="grid grid-cols-[2.5rem_1fr_5rem_8rem_2.5rem] gap-2 px-4 py-3 items-center group hover:bg-muted/50 transition-colors"
               >
                 <span className="text-sm text-muted-foreground tabular-nums">{i + 1}</span>
                 <div className="min-w-0">
@@ -282,6 +284,11 @@ function FieldList({ entityType }: { entityType: string }) {
                     </p>
                   )}
                 </div>
+                {field.isPromoted ? (
+                  <Badge variant="default" className="text-[10px] shrink-0 bg-emerald-600 hover:bg-emerald-600">Column</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] shrink-0">JSONB</Badge>
+                )}
                 <span className="text-sm text-muted-foreground">{fieldTypeConfig[field.fieldType]?.label ?? field.fieldType}</span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -298,6 +305,12 @@ function FieldList({ entityType }: { entityType: string }) {
                       <Pencil className="h-4 w-4 mr-2" />
                       Edit
                     </DropdownMenuItem>
+                    {entityType === "lead" && !field.isPromoted && (
+                      <DropdownMenuItem onClick={() => setPromoteTarget(field)}>
+                        <ArrowUpCircle className="h-4 w-4 mr-2" />
+                        Promote to Column
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       onClick={() => handleDelete(field)}
                       className="text-red-600 focus:text-red-600"
@@ -356,11 +369,10 @@ function FieldList({ entityType }: { entityType: string }) {
                         setFormOptions([])
                       }
                     }}
-                    className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:bg-muted/50 ${
-                      formType === key
+                    className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:bg-muted/50 ${formType === key
                         ? "border-primary bg-primary/5 ring-1 ring-primary"
                         : "border-border"
-                    }`}
+                      }`}
                   >
                     <span className="text-xs font-mono bg-muted rounded px-1.5 py-0.5 mt-0.5 shrink-0 w-7 text-center">{config.icon}</span>
                     <div className="min-w-0">
@@ -390,6 +402,45 @@ function FieldList({ entityType }: { entityType: string }) {
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={!canSave}>
               {editingField ? "Save Changes" : "Add Field"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Promote confirmation dialog */}
+      <Dialog open={!!promoteTarget} onOpenChange={(open) => { if (!open) setPromoteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Promote to Lead Column</DialogTitle>
+            <DialogDescription>
+              This will create a real database column for <strong>&ldquo;{promoteTarget?.fieldLabel}&rdquo;</strong> on the leads table.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border p-3 space-y-2">
+              <p><strong>What happens:</strong></p>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>A new column <code className="bg-muted px-1 rounded text-xs">{promoteTarget?.fieldKey}</code> is added to the leads table</li>
+                <li>Existing data is migrated from JSONB to the new column</li>
+                <li>The field becomes directly queryable and sortable</li>
+              </ul>
+            </div>
+            <p className="text-amber-600 text-xs font-medium">⚠ This action cannot be undone.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPromoteTarget(null)} disabled={promoting}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                if (!promoteTarget) return
+                setPromoting(true)
+                await promoteField(promoteTarget.id)
+                setPromoting(false)
+                setPromoteTarget(null)
+              }}
+              disabled={promoting}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {promoting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Promoting...</> : <><ArrowUpCircle className="h-4 w-4 mr-1" /> Promote</>}
             </Button>
           </DialogFooter>
         </DialogContent>

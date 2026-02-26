@@ -15,6 +15,7 @@ function mapFieldRow(row: Record<string, unknown>): FieldDefinition {
     fieldType: (row.field_type ?? row.fieldType) as FieldType,
     options: (row.options ?? undefined) as string[] | undefined,
     isRequired: (row.is_required ?? row.isRequired ?? false) as boolean,
+    isPromoted: (row.is_promoted ?? row.isPromoted ?? false) as boolean,
     position: (row.position ?? 0) as number,
     createdAt: (row.created_at ?? row.createdAt ?? new Date().toISOString()) as string,
   }
@@ -183,5 +184,35 @@ export function useFieldDefinitions(entityType = "lead") {
     }
   }, [fields])
 
-  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField }
+  const promoteField = useCallback(async (fieldId: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!projectId) return { ok: false, error: "No project selected" }
+    try {
+      const supabase = getSupabase()
+      const { data, error } = await supabase.rpc("promote_field_to_column", {
+        p_field_id: fieldId,
+        p_project_id: projectId,
+      })
+
+      if (error) {
+        toast({ variant: "destructive", title: "Promotion failed", description: error.message })
+        return { ok: false, error: error.message }
+      }
+
+      const result = data as Record<string, unknown> | null
+      if (result?.already) {
+        toast({ title: "Already promoted", description: `Field "${result.field_key}" is already a column.` })
+      } else {
+        toast({ title: "Field promoted!", description: `"${result?.field_key}" is now a lead column. ${result?.rows_migrated ?? 0} rows migrated.` })
+      }
+
+      await fetchFields()
+      return { ok: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      toast({ variant: "destructive", title: "Promotion failed", description: msg })
+      return { ok: false, error: msg }
+    }
+  }, [projectId, toast, fetchFields])
+
+  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField }
 }
