@@ -1,0 +1,144 @@
+/* ===== Footer ===== */
+.footer {
+    margin-top: auto;
+}
+
+/* ===== Main Footer Area ===== */
+.footer__main {
+    background: #333333;
+    padding: 40px 0;
+}
+
+.footer__inner {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 30px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 40px;
+}
+
+/* ===== Footer Headings ===== */
+.footer__heading {
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+    font-family: 'Open Sans', sans-serif;
+}
+
+/* ===== Social Icons ===== */
+.footer__socials {
+    display: flex;
+    gap: 10px;
+}
+
+.footer__social-link {
+    text-decoration: none !important;
+}
+
+.footer__social-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    border-radius: 4px;
+    color: #ffffff;
+}
+
+.footer__social-icon--linkedin {
+    background: #0077B5;
+}
+
+.footer__social-icon--x {
+    background: #333333;
+    border: 1px solid #555555;
+}
+
+/* ===== Footer Links ===== */
+.footer__links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.footer__links li {
+    margin-bottom: 8px;
+}
+
+.footer__link {
+    color: #5DBCE3;
+    font-size: 0.9rem;
+    text-decoration: none;
+    font-family: 'Open Sans', sans-serif;
+}
+
+.footer__link:hover {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
+/* ===== Footer Search ===== */
+.footer__search {
+    display: flex;
+    align-items: center;
+    border: 1px solid #555555;
+    background: #ffffff;
+}
+
+.footer__search-input {
+    padding: 8px 12px;
+    border: none;
+    outline: none;
+    font-size: 0.75rem;
+    color: #999999;
+    font-family: 'Open Sans', sans-serif;
+    letter-spacing: 0.5px;
+    width: 200px;
+    background: transparent;
+}
+
+.footer__search-input::placeholder {
+    color: #aaaaaa;
+}
+
+.footer__search-btn {
+    padding: 8px 12px;
+    background: #eeeeee;
+    border: none;
+    border-left: 1px solid #cccccc;
+    color: #666666;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.footer__search-btn:hover {
+    background: #dddddd;
+}
+
+/* ===== Footer Bottom ===== */
+.footer__bottom {
+    background: #222222;
+    padding: 16px 0;
+    text-align: center;
+}
+
+.footer__copyright {
+    color: #999999;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    font-family: 'Open Sans', sans-serif;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+    .footer__inner {
+        grid-template-columns: 1fr;
+        gap: 30px;
+    }
+}

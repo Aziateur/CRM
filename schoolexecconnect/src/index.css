@@ -1,0 +1,141 @@
+/* ===== Google Font: Open Sans ===== */
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap');
+
+/* ===== Reset & Base ===== */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Open Sans', sans-serif;
+  color: #333333;
+  background: #eef2f6;
+  line-height: 1.7;
+  font-size: 16px;
+}
+
+a {
+  text-decoration: none;
+  color: #5DBCE3;
+}
+
+a:hover {
+  color: #4AA8CF;
+  text-decoration: underline;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+ul,
+ol {
+  list-style: disc;
+  margin-left: 20px;
+}
+
+ol {
+  list-style: decimal;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+/* ===== Layout ===== */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  background: #eef2f6;
+}
+
+/* ===== Page Content Wrapper ===== */
+.page-content {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 40px 30px 60px;
+  background: #ffffff;
+  border-left: 1px solid #e0e0e0;
+  border-right: 1px solid #e0e0e0;
+}
+
+.page-content h1 {
+  font-family: 'Open Sans', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 300;
+  color: #333333;
+  margin-bottom: 24px;
+  line-height: 1.2;
+}
+
+.page-content h2 {
+  font-family: 'Open Sans', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #333333;
+  margin: 30px 0 16px;
+}
+
+.page-content h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #333333;
+  margin: 20px 0 10px;
+}
+
+.page-content p {
+  color: #333333;
+  margin-bottom: 16px;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.page-content strong {
+  font-weight: 700;
+  color: #333333;
+}
+
+.page-content ul,
+.page-content ol {
+  margin-bottom: 16px;
+  padding-left: 20px;
+}
+
+.page-content ul li,
+.page-content ol li {
+  color: #333333;
+  padding: 4px 0;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .page-content {
+    padding: 20px 16px 40px;
+  }
+
+  .page-content h1 {
+    font-size: 1.8rem;
+  }
+}

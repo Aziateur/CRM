@@ -1,0 +1,68 @@
+/* ===== Contact Us Page ===== */
+.contact-info {
+    margin-bottom: 30px;
+}
+
+.contact-info p {
+    margin-bottom: 2px;
+    line-height: 1.6;
+}
+
+/* ===== Contact Form ===== */
+.contact-form {
+    margin-top: 10px;
+}
+
+.contact-form__group {
+    margin-bottom: 20px;
+}
+
+.contact-form__group label {
+    display: block;
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.95rem;
+    color: #333333;
+    margin-bottom: 6px;
+}
+
+.contact-form__group input,
+.contact-form__group textarea {
+    width: 100%;
+    max-width: 680px;
+    padding: 10px 12px;
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.95rem;
+    color: #333333;
+    background: #eef2f6;
+    border: 1px solid #ddd;
+    border-radius: 0;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.contact-form__group input:focus,
+.contact-form__group textarea:focus {
+    border-color: #5DBCE3;
+}
+
+.contact-form__group textarea {
+    resize: vertical;
+}
+
+.contact-form__submit {
+    display: inline-block;
+    padding: 12px 24px;
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #ffffff;
+    background: #5DBCE3;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: none;
+}
+
+.contact-form__submit:hover {
+    background: #4AA8CF;
+}

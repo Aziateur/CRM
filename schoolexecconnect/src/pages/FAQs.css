@@ -1,0 +1,14 @@
+/* ===== FAQs Page ===== */
+.faq-item {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+}
+
+.faq-question {
+    margin-bottom: 12px;
+}
+
+.faq-question strong {
+    font-size: 1rem;
+    color: #333333;
+}

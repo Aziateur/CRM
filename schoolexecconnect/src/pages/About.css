@@ -1,0 +1,116 @@
+/* ===== About Us Page ===== */
+.about-page {
+    max-width: 1140px;
+    margin: 0 auto;
+    background: #ffffff;
+    border-left: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
+}
+
+.about-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 0;
+}
+
+/* ===== Sidebar ===== */
+.about-sidebar {
+    padding: 40px 20px 60px 30px;
+    border-right: 1px solid #eeeeee;
+}
+
+.about-sidebar__section {
+    margin-bottom: 30px;
+}
+
+.about-sidebar__heading {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #333333;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.about-sidebar__sub {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #333333;
+    margin: 8px 0 4px;
+}
+
+.about-sidebar__name {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.8rem;
+    color: #5DBCE3;
+    margin: 2px 0;
+    line-height: 1.6;
+    cursor: pointer;
+}
+
+.about-sidebar__name:hover {
+    color: #4AA8CF;
+    text-decoration: underline;
+}
+
+/* ===== Main Content ===== */
+.about-main {
+    padding: 40px 40px 60px;
+}
+
+.about-main h1 {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 2.4rem;
+    font-weight: 300;
+    color: #333333;
+    margin-bottom: 12px;
+    line-height: 1.2;
+}
+
+.about-main h2 {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #333333;
+    margin-bottom: 24px;
+    letter-spacing: 0.5px;
+}
+
+.about-main h3 {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #333333;
+    margin: 30px 0 12px;
+}
+
+.about-main p {
+    font-family: 'Open Sans', sans-serif;
+    font-size: 0.95rem;
+    color: #333333;
+    line-height: 1.8;
+    margin-bottom: 16px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+    .about-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .about-sidebar {
+        padding: 20px;
+        border-right: none;
+        border-bottom: 1px solid #eeeeee;
+    }
+
+    .about-main {
+        padding: 20px;
+    }
+
+    .about-main h1 {
+        font-size: 1.8rem;
+    }
+}

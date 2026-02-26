@@ -1,0 +1,10 @@
+.next
+out
+node_modules
+.mcp.json
+.env
+.env.local
+tsconfig.tsbuildinfo
+.sketches/
+.agent/skills/
+.tmp/
