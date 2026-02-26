@@ -13,6 +13,8 @@ import {
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { usePipelineStages } from "@/hooks/use-pipeline-stages"
+import { useCategories } from "@/hooks/use-categories"
+import { CategoryIcon } from "@/components/category-icon"
 import { X, Trash2, ArrowRight } from "lucide-react"
 import { exportLeadsCSV } from "@/lib/csv"
 import type { Lead, Attempt, FieldDefinition } from "@/lib/store"
@@ -37,7 +39,9 @@ export function BulkActionsBar({
 }: BulkActionsBarProps) {
   const { toast } = useToast()
   const { stages } = usePipelineStages()
+  const { activeCategories: segmentCategories } = useCategories("segment")
   const [bulkStage, setBulkStage] = useState<string>("")
+  const [bulkSegment, setBulkSegment] = useState<string>("")
 
   if (selectedIds.size === 0) return null
 
@@ -72,6 +76,27 @@ export function BulkActionsBar({
       onClearSelection()
     }
     setBulkStage("")
+  }
+
+  const handleBulkSegmentChange = async () => {
+    if (!bulkSegment) return
+    const supabase = getSupabase()
+    const ids = Array.from(selectedIds)
+
+    const { error } = await supabase
+      .from("leads")
+      .update({ segment: bulkSegment })
+      .in("id", ids)
+
+    if (error) {
+      toast({ variant: "destructive", title: "Bulk segment update failed", description: error.message })
+    } else {
+      const segName = segmentCategories.find(s => s.id === bulkSegment)?.name ?? bulkSegment
+      toast({ title: `${ids.length} leads moved to segment "${segName}"` })
+      onLeadsUpdated()
+      onClearSelection()
+    }
+    setBulkSegment("")
   }
 
   const handleBulkDelete = async () => {
@@ -120,6 +145,30 @@ export function BulkActionsBar({
         </Select>
         {bulkStage && (
           <Button size="sm" className="h-8" onClick={handleBulkStageChange}>
+            <ArrowRight className="h-4 w-4 mr-1" />
+            Apply
+          </Button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Select value={bulkSegment} onValueChange={setBulkSegment}>
+          <SelectTrigger className="h-8 w-44 text-sm">
+            <SelectValue placeholder="Change segment..." />
+          </SelectTrigger>
+          <SelectContent>
+            {segmentCategories.map((seg) => (
+              <SelectItem key={seg.id} value={seg.id}>
+                <div className="flex items-center gap-2">
+                  <CategoryIcon icon={seg.icon} className="h-3 w-3" />
+                  {seg.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {bulkSegment && (
+          <Button size="sm" className="h-8" onClick={handleBulkSegmentChange}>
             <ArrowRight className="h-4 w-4 mr-1" />
             Apply
           </Button>
