@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Plus, MoreHorizontal, Pencil, Trash2, Search, X, GripVertical, ArrowUpCircle, Loader2 } from "lucide-react"
+import { Plus, MoreHorizontal, Pencil, Trash2, Search, X, GripVertical, ArrowUpCircle, ArrowDownCircle, Loader2 } from "lucide-react"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import type { FieldType, FieldDefinition } from "@/lib/store"
 
@@ -156,7 +156,7 @@ function OptionsManager({
 }
 
 function FieldList({ entityType }: { entityType: string }) {
-  const { fields, loading, createField, updateField, deleteField, promoteField } = useFieldDefinitions(entityType)
+  const { fields, loading, createField, updateField, deleteField, promoteField, demoteField } = useFieldDefinitions(entityType)
   const [search, setSearch] = useState("")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [editingField, setEditingField] = useState<FieldDefinition | null>(null)
@@ -165,6 +165,7 @@ function FieldList({ entityType }: { entityType: string }) {
   const [formRequired, setFormRequired] = useState(false)
   const [formOptions, setFormOptions] = useState<string[]>([])
   const [promoteTarget, setPromoteTarget] = useState<FieldDefinition | null>(null)
+  const [demoteTarget, setDemoteTarget] = useState<FieldDefinition | null>(null)
   const [promoting, setPromoting] = useState(false)
 
   const entityLabel = ENTITY_TYPES.find((e) => e.key === entityType)?.label ?? entityType
@@ -284,10 +285,12 @@ function FieldList({ entityType }: { entityType: string }) {
                     </p>
                   )}
                 </div>
-                {field.isPromoted ? (
+                {field.source === "native" ? (
+                  <Badge variant="secondary" className="text-[10px] shrink-0">Native</Badge>
+                ) : field.isPromoted ? (
                   <Badge variant="default" className="text-[10px] shrink-0 bg-emerald-600 hover:bg-emerald-600">Column</Badge>
                 ) : (
-                  <Badge variant="outline" className="text-[10px] shrink-0">JSONB</Badge>
+                  <Badge variant="outline" className="text-[10px] shrink-0">Custom</Badge>
                 )}
                 <span className="text-sm text-muted-foreground">{fieldTypeConfig[field.fieldType]?.label ?? field.fieldType}</span>
                 <DropdownMenu>
@@ -305,19 +308,27 @@ function FieldList({ entityType }: { entityType: string }) {
                       <Pencil className="h-4 w-4 mr-2" />
                       Edit
                     </DropdownMenuItem>
-                    {entityType === "lead" && !field.isPromoted && (
+                    {entityType === "lead" && !field.isPromoted && field.source !== "native" && (
                       <DropdownMenuItem onClick={() => setPromoteTarget(field)}>
                         <ArrowUpCircle className="h-4 w-4 mr-2" />
                         Promote to Column
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem
-                      onClick={() => handleDelete(field)}
-                      className="text-red-600 focus:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
+                    {entityType === "lead" && field.isPromoted && (
+                      <DropdownMenuItem onClick={() => setDemoteTarget(field)}>
+                        <ArrowDownCircle className="h-4 w-4 mr-2" />
+                        Demote to Custom Field
+                      </DropdownMenuItem>
+                    )}
+                    {field.source !== "native" && (
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(field)}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -370,8 +381,8 @@ function FieldList({ entityType }: { entityType: string }) {
                       }
                     }}
                     className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:bg-muted/50 ${formType === key
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border"
                       }`}
                   >
                     <span className="text-xs font-mono bg-muted rounded px-1.5 py-0.5 mt-0.5 shrink-0 w-7 text-center">{config.icon}</span>
@@ -425,7 +436,7 @@ function FieldList({ entityType }: { entityType: string }) {
                 <li>The field becomes directly queryable and sortable</li>
               </ul>
             </div>
-            <p className="text-amber-600 text-xs font-medium">⚠ This action cannot be undone.</p>
+            <p className="text-muted-foreground text-xs">You can demote it back later if needed.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPromoteTarget(null)} disabled={promoting}>Cancel</Button>
@@ -441,6 +452,44 @@ function FieldList({ entityType }: { entityType: string }) {
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               {promoting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Promoting...</> : <><ArrowUpCircle className="h-4 w-4 mr-1" /> Promote</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Demote confirmation dialog */}
+      <Dialog open={!!demoteTarget} onOpenChange={(open) => { if (!open) setDemoteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Demote to Custom Field</DialogTitle>
+            <DialogDescription>
+              This will move <strong>&ldquo;{demoteTarget?.fieldLabel}&rdquo;</strong> back to a JSONB custom field.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border p-3 space-y-2">
+              <p><strong>What happens:</strong></p>
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                <li>Column data is copied back into the <code className="bg-muted px-1 rounded text-xs">custom_fields</code> JSONB</li>
+                <li>The database column is left empty (not dropped)</li>
+                <li>The field will no longer be directly sortable in queries</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDemoteTarget(null)} disabled={promoting}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                if (!demoteTarget) return
+                setPromoting(true)
+                await demoteField(demoteTarget.id)
+                setPromoting(false)
+                setDemoteTarget(null)
+              }}
+              disabled={promoting}
+              variant="destructive"
+            >
+              {promoting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Demoting...</> : <><ArrowDownCircle className="h-4 w-4 mr-1" /> Demote</>}
             </Button>
           </DialogFooter>
         </DialogContent>

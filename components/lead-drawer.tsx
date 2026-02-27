@@ -22,12 +22,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -214,8 +208,8 @@ export function LeadDrawer({
   const handleCustomFieldChange = async (fieldKey: string, value: unknown) => {
     if (!editedLead) return
     const fieldDef = fieldDefinitions.find((f) => f.fieldKey === fieldKey)
-    if (fieldDef?.isPromoted) {
-      // Promoted field — save directly to column
+    if (fieldDef?.source === "native" || fieldDef?.isPromoted) {
+      // Native column or promoted field — save directly to lead column
       setEditedLead({ ...editedLead, [fieldKey]: value })
       await autoSave(fieldKey, value)
     } else {
@@ -479,56 +473,53 @@ export function LeadDrawer({
                   </Card>
                 )}
 
-                {/* LEAD INFO */}
+                {/* LEAD INFO — CORE FIELDS */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Lead Info</CardTitle>
+                    <CardTitle className="text-sm font-medium">Contact Info</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Deal Value</Label>
-                      <Input type="number" value={ed.dealValue ?? ""} onChange={(e) => setEditedLead({ ...ed, dealValue: e.target.value ? Number(e.target.value) : undefined })} onBlur={() => autoSave("deal_value", ed.dealValue ?? null)} placeholder="0.00" className="mt-1" />
-                    </div>
+                  <CardContent className="space-y-3">
+                    {fieldDefinitions
+                      .filter((f) => f.section === "core")
+                      .map((field) => {
+                        const fieldValue = (field.source === "native" || field.isPromoted)
+                          ? (ed as unknown as Record<string, unknown>)[field.fieldKey] ?? null
+                          : ed.customFields?.[field.fieldKey] ?? null
+                        return (
+                          <DynamicFieldRenderer
+                            key={field.id}
+                            field={field}
+                            value={fieldValue}
+                            onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
+                            readOnly={false}
+                          />
+                        )
+                      })}
+                  </CardContent>
+                </Card>
 
-                    {/* Dynamic Custom Fields */}
-                    {fieldDefinitions.length > 0 && (
-                      <div className="space-y-3">
-                        {fieldDefinitions.map((field) => {
-                          const fieldValue = field.isPromoted
-                            ? (ed as unknown as Record<string, unknown>)[field.fieldKey] ?? null
-                            : ed.customFields?.[field.fieldKey] ?? null
-                          return (
-                            <DynamicFieldRenderer
-                              key={field.id}
-                              field={field}
-                              value={fieldValue}
-                              onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
-                              readOnly={false}
-                            />
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    <Accordion type="single" collapsible className="w-full">
-                      <AccordionItem value="advanced" className="border-none">
-                        <AccordionTrigger className="text-xs text-muted-foreground py-2">Advanced</AccordionTrigger>
-                        <AccordionContent>
-                          <div className="space-y-3">
-                            {(["website", "email", "address", "leadSource"] as const).map((field) => {
-                              const label = field === "leadSource" ? "Lead Source" : field.charAt(0).toUpperCase() + field.slice(1)
-                              const dbField = field === "leadSource" ? "lead_source" : field
-                              return (
-                                <div key={field}>
-                                  <Label className="text-xs text-muted-foreground">{label}</Label>
-                                  <Input value={(ed[field] as string) || ""} onChange={(e) => setEditedLead({ ...ed, [field]: e.target.value })} onBlur={() => autoSave(dbField, ed[field])} className="mt-1" />
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
+                {/* LEAD INFO — DETAIL FIELDS */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {fieldDefinitions
+                      .filter((f) => f.section === "detail")
+                      .map((field) => {
+                        const fieldValue = (field.source === "native" || field.isPromoted)
+                          ? (ed as unknown as Record<string, unknown>)[field.fieldKey] ?? null
+                          : ed.customFields?.[field.fieldKey] ?? null
+                        return (
+                          <DynamicFieldRenderer
+                            key={field.id}
+                            field={field}
+                            value={fieldValue}
+                            onChange={(val) => handleCustomFieldChange(field.fieldKey, val)}
+                            readOnly={false}
+                          />
+                        )
+                      })}
                   </CardContent>
                 </Card>
 

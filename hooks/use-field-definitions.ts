@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { useProjectId } from "@/hooks/use-project-id"
-import type { FieldDefinition, FieldType } from "@/lib/store"
+import type { FieldDefinition, FieldType, FieldSection, FieldSource } from "@/lib/store"
 
 function mapFieldRow(row: Record<string, unknown>): FieldDefinition {
   return {
@@ -16,6 +16,8 @@ function mapFieldRow(row: Record<string, unknown>): FieldDefinition {
     options: (row.options ?? undefined) as string[] | undefined,
     isRequired: (row.is_required ?? row.isRequired ?? false) as boolean,
     isPromoted: (row.is_promoted ?? row.isPromoted ?? false) as boolean,
+    section: (row.section ?? "detail") as FieldSection,
+    source: (row.source ?? "custom") as FieldSource,
     position: (row.position ?? 0) as number,
     createdAt: (row.created_at ?? row.createdAt ?? new Date().toISOString()) as string,
   }
@@ -214,5 +216,35 @@ export function useFieldDefinitions(entityType = "lead") {
     }
   }, [projectId, toast, fetchFields])
 
-  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField }
+  const demoteField = useCallback(async (fieldId: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!projectId) return { ok: false, error: "No project selected" }
+    try {
+      const supabase = getSupabase()
+      const { data, error } = await supabase.rpc("demote_column_to_field", {
+        p_field_id: fieldId,
+        p_project_id: projectId,
+      })
+
+      if (error) {
+        toast({ variant: "destructive", title: "Demotion failed", description: error.message })
+        return { ok: false, error: error.message }
+      }
+
+      const result = data as Record<string, unknown> | null
+      if (result?.error) {
+        toast({ variant: "destructive", title: "Demotion failed", description: result.error as string })
+        return { ok: false, error: result.error as string }
+      }
+
+      toast({ title: "Field demoted", description: `"${result?.field_key}" moved back to custom field. ${result?.rows_migrated ?? 0} rows migrated.` })
+      await fetchFields()
+      return { ok: true }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      toast({ variant: "destructive", title: "Demotion failed", description: msg })
+      return { ok: false, error: msg }
+    }
+  }, [projectId, toast, fetchFields])
+
+  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField, demoteField }
 }

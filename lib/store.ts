@@ -190,6 +190,9 @@ export function getDefaultTaskForOutcome(
 
 export type FieldType = "text" | "number" | "select" | "multi_select" | "date" | "boolean" | "url" | "email"
 
+export type FieldSection = "core" | "detail" | "strategy" | "advanced"
+export type FieldSource = "native" | "promoted" | "custom"
+
 export interface FieldDefinition {
   id: string
   entityType: string
@@ -199,6 +202,8 @@ export interface FieldDefinition {
   options?: string[]
   isRequired: boolean
   isPromoted: boolean
+  section: FieldSection
+  source: FieldSource
   position: number
   createdAt: string
 }
