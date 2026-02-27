@@ -16,6 +16,7 @@ function mapFieldRow(row: Record<string, unknown>): FieldDefinition {
     options: (row.options ?? undefined) as string[] | undefined,
     isRequired: (row.is_required ?? row.isRequired ?? false) as boolean,
     isPromoted: (row.is_promoted ?? row.isPromoted ?? false) as boolean,
+    isMasked: (row.is_masked ?? row.isMasked ?? false) as boolean,
     section: (row.section ?? "detail") as FieldSection,
     source: (row.source ?? "custom") as FieldSource,
     position: (row.position ?? 0) as number,
@@ -246,5 +247,26 @@ export function useFieldDefinitions(entityType = "lead") {
     }
   }, [projectId, toast, fetchFields])
 
-  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField, demoteField }
+  const toggleMask = useCallback(async (fieldId: string, masked: boolean) => {
+    try {
+      const supabase = getSupabase()
+      const { error } = await supabase
+        .from("field_definitions")
+        .update({ is_masked: masked })
+        .eq("id", fieldId)
+
+      if (error) {
+        toast({ variant: "destructive", title: "Failed to update visibility", description: error.message })
+        return
+      }
+
+      setFields((prev) =>
+        prev.map((f) => f.id === fieldId ? { ...f, isMasked: masked } : f)
+      )
+    } catch {
+      // silent
+    }
+  }, [toast])
+
+  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField, demoteField, toggleMask }
 }

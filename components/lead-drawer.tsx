@@ -9,6 +9,7 @@ import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { useCategories } from "@/hooks/use-categories"
 import { DynamicFieldRenderer } from "@/components/dynamic-field-renderer"
+import { ConfigureFieldsPanel } from "@/components/configure-fields-panel"
 import { CategoryIcon } from "@/components/category-icon"
 import { TagToggle } from "@/components/tag-manager"
 import { SequenceEnrollmentWidget } from "@/components/sequence-enrollment"
@@ -115,7 +116,7 @@ export function LeadDrawer({
   const { toast } = useToast()
   const projectId = useProjectId()
   const { stages } = usePipelineStages()
-  const { fields: fieldDefinitions } = useFieldDefinitions("lead")
+  const { fields: fieldDefinitions, toggleMask, promoteField, demoteField, deleteField: deleteFieldDef } = useFieldDefinitions("lead")
   const { categories: segmentCategories } = useCategories("segment")
   const { tasks, completeTask } = useTasks({ leadId: lead?.id })
   const [editedLead, setEditedLead] = useState<Lead | null>(null)
@@ -476,11 +477,21 @@ export function LeadDrawer({
                 {/* LEAD INFO — CORE FIELDS */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Contact Info</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-medium">Contact Info</CardTitle>
+                      <ConfigureFieldsPanel
+                        fields={fieldDefinitions}
+                        section="core"
+                        onToggleMask={(id, m) => toggleMask(id, m)}
+                        onPromote={(id) => promoteField(id)}
+                        onDemote={(id) => demoteField(id)}
+                        onDelete={(id) => deleteFieldDef(id)}
+                      />
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {fieldDefinitions
-                      .filter((f) => f.section === "core")
+                      .filter((f) => f.section === "core" && !f.isMasked)
                       .map((field) => {
                         const fieldValue = (field.source === "native" || field.isPromoted)
                           ? (ed as unknown as Record<string, unknown>)[field.fieldKey] ?? null
@@ -501,11 +512,21 @@ export function LeadDrawer({
                 {/* LEAD INFO — DETAIL FIELDS */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Details</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-medium">Details</CardTitle>
+                      <ConfigureFieldsPanel
+                        fields={fieldDefinitions}
+                        section="detail"
+                        onToggleMask={(id, m) => toggleMask(id, m)}
+                        onPromote={(id) => promoteField(id)}
+                        onDemote={(id) => demoteField(id)}
+                        onDelete={(id) => deleteFieldDef(id)}
+                      />
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {fieldDefinitions
-                      .filter((f) => f.section === "detail")
+                      .filter((f) => f.section === "detail" && !f.isMasked)
                       .map((field) => {
                         const fieldValue = (field.source === "native" || field.isPromoted)
                           ? (ed as unknown as Record<string, unknown>)[field.fieldKey] ?? null

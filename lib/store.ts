@@ -202,6 +202,7 @@ export interface FieldDefinition {
   options?: string[]
   isRequired: boolean
   isPromoted: boolean
+  isMasked: boolean
   section: FieldSection
   source: FieldSource
   position: number
