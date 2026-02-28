@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -51,7 +51,7 @@ import type { FieldDefinition, FieldSection, FieldType } from "@/lib/store"
 // ─── DnD Kit ───────────────────────────────────────────────────
 import {
     DndContext,
-    closestCenter,
+    closestCorners,
     KeyboardSensor,
     PointerSensor,
     useSensor,
@@ -60,6 +60,7 @@ import {
     DragStartEvent,
     DragEndEvent,
     DragOverEvent,
+    useDroppable,
 } from "@dnd-kit/core"
 import {
     arrayMove,
@@ -91,8 +92,23 @@ const SECTION_META: Record<string, { label: string; description: string }> = {
 /** System fields that cannot be deleted (but CAN be hidden/reordered) */
 const SYSTEM_FIELD_KEYS = new Set(["phone", "email", "company"])
 
+const SECTION_KEYS: FieldSection[] = ["core", "detail"]
+
 function slugify(label: string): string {
     return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+}
+
+// Helper: find which section container a field belongs to
+function findContainer(
+    coreIds: string[],
+    detailIds: string[],
+    id: string
+): FieldSection | null {
+    if (coreIds.includes(id)) return "core"
+    if (detailIds.includes(id)) return "detail"
+    // Check if the id IS a container
+    if (id === "core" || id === "detail") return id as FieldSection
+    return null
 }
 
 // ─── Main Component ────────────────────────────────────────────
@@ -114,7 +130,10 @@ export function LeadFormTab() {
     const [creating, setCreating] = useState(false)
     const [activeId, setActiveId] = useState<string | null>(null)
 
-    // Split fields into sections
+    // Local state for drag operations — maps section → ordered field IDs
+    const [containers, setContainers] = useState<Record<FieldSection, string[]> | null>(null)
+
+    // Derive from fields when not actively dragging
     const coreFields = useMemo(
         () => fields.filter((f) => f.section === "core").sort((a, b) => a.position - b.position),
         [fields]
@@ -124,7 +143,18 @@ export function LeadFormTab() {
         [fields]
     )
 
-    const activeField = activeId ? fields.find((f) => f.id === activeId) : null
+    // Current ordered IDs — use drag state if dragging, else derive from fields
+    const coreIds = containers?.core ?? coreFields.map((f) => f.id)
+    const detailIds = containers?.detail ?? detailFields.map((f) => f.id)
+
+    // Build field map for quick lookup
+    const fieldMap = useMemo(() => {
+        const m = new Map<string, FieldDefinition>()
+        fields.forEach((f) => m.set(f.id, f))
+        return m
+    }, [fields])
+
+    const activeField = activeId ? fieldMap.get(activeId) ?? null : null
 
     // DnD sensors
     const sensors = useSensors(
@@ -134,58 +164,102 @@ export function LeadFormTab() {
 
     // ── Drag handlers ──
 
-    function handleDragStart(event: DragStartEvent) {
+    const handleDragStart = useCallback((event: DragStartEvent) => {
         setActiveId(event.active.id as string)
-    }
+        // Snapshot current order into local state for manipulation during drag
+        setContainers({
+            core: coreFields.map((f) => f.id),
+            detail: detailFields.map((f) => f.id),
+        })
+    }, [coreFields, detailFields])
 
-    function handleDragEnd(event: DragEndEvent) {
+    const handleDragOver = useCallback((event: DragOverEvent) => {
+        const { active, over } = event
+        if (!over || !containers) return
+
+        const activeContainer = findContainer(containers.core, containers.detail, active.id as string)
+        let overContainer = findContainer(containers.core, containers.detail, over.id as string)
+
+        // If over is a container id itself (empty container), use that
+        if (over.id === "core" || over.id === "detail") {
+            overContainer = over.id as FieldSection
+        }
+
+        if (!activeContainer || !overContainer || activeContainer === overContainer) return
+
+        // Move item from one container to the other
+        setContainers((prev) => {
+            if (!prev) return prev
+            const sourceItems = [...prev[activeContainer]]
+            const destItems = [...prev[overContainer!]]
+
+            const activeIndex = sourceItems.indexOf(active.id as string)
+            if (activeIndex === -1) return prev
+
+            // Remove from source
+            sourceItems.splice(activeIndex, 1)
+
+            // Find where to insert in destination
+            const overIndex = destItems.indexOf(over.id as string)
+            const insertIndex = overIndex >= 0 ? overIndex : destItems.length
+
+            destItems.splice(insertIndex, 0, active.id as string)
+
+            return {
+                ...prev,
+                [activeContainer]: sourceItems,
+                [overContainer!]: destItems,
+            }
+        })
+    }, [containers])
+
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
         const { active, over } = event
         setActiveId(null)
-        if (!over || active.id === over.id) return
 
-        const activeField = fields.find((f) => f.id === active.id)
-        const overField = fields.find((f) => f.id === over.id)
-        if (!activeField || !overField) return
+        if (!over || !containers) {
+            setContainers(null)
+            return
+        }
 
-        // Determine target section from the over field
-        const targetSection = overField.section
+        const activeContainer = findContainer(containers.core, containers.detail, active.id as string)
+        let overContainer = findContainer(containers.core, containers.detail, over.id as string)
 
-        // Build the full list for the target section
-        const sourceSectionFields = fields
-            .filter((f) => f.section === activeField.section)
-            .sort((a, b) => a.position - b.position)
-        const targetSectionFields = fields
-            .filter((f) => f.section === targetSection)
-            .sort((a, b) => a.position - b.position)
+        if (over.id === "core" || over.id === "detail") {
+            overContainer = over.id as FieldSection
+        }
 
+        if (!activeContainer || !overContainer) {
+            setContainers(null)
+            return
+        }
+
+        // Final reorder within the same container
+        let finalContainers = { ...containers }
+        if (activeContainer === overContainer) {
+            const items = [...containers[activeContainer]]
+            const oldIndex = items.indexOf(active.id as string)
+            const overIndex = items.indexOf(over.id as string)
+            if (oldIndex !== -1 && overIndex !== -1 && oldIndex !== overIndex) {
+                finalContainers = {
+                    ...containers,
+                    [activeContainer]: arrayMove(items, oldIndex, overIndex),
+                }
+            }
+        }
+
+        // Build updates for all fields
         const updates: { id: string; position: number; section: FieldSection }[] = []
-
-        if (activeField.section === targetSection) {
-            // Same section — simple reorder
-            const oldIndex = sourceSectionFields.findIndex((f) => f.id === active.id)
-            const newIndex = sourceSectionFields.findIndex((f) => f.id === over.id)
-            const reordered = arrayMove(sourceSectionFields, oldIndex, newIndex)
-            reordered.forEach((f, i) => {
-                updates.push({ id: f.id, position: i, section: targetSection })
-            })
-        } else {
-            // Cross-section move
-            // Remove from source
-            const filteredSource = sourceSectionFields.filter((f) => f.id !== active.id)
-            filteredSource.forEach((f, i) => {
-                updates.push({ id: f.id, position: i, section: activeField.section })
-            })
-            // Insert into target at the over position
-            const overIndex = targetSectionFields.findIndex((f) => f.id === over.id)
-            const newTarget = [...targetSectionFields]
-            newTarget.splice(overIndex, 0, activeField)
-            newTarget.forEach((f, i) => {
-                updates.push({ id: f.id, position: i, section: targetSection })
+        for (const section of SECTION_KEYS) {
+            const ids = finalContainers[section]
+            ids.forEach((id, index) => {
+                updates.push({ id, position: index, section })
             })
         }
 
+        setContainers(null)
         reorderFields(updates)
-    }
+    }, [containers, reorderFields])
 
     // ── Add field ──
 
@@ -235,25 +309,80 @@ export function LeadFormTab() {
                 {/* DnD Context wraps BOTH sections */}
                 <DndContext
                     sensors={sensors}
-                    collisionDetection={closestCenter}
+                    collisionDetection={closestCorners}
                     onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
                 >
                     {/* Contact Info Section */}
-                    <SectionCard
-                        sectionKey="core"
-                        fields={coreFields}
-                        onToggleMask={toggleMask}
-                        onDelete={deleteField}
-                    />
+                    <DroppableSection sectionKey="core" fieldIds={coreIds}>
+                        <CardHeader className="pb-3">
+                            <div className="flex items-center gap-2">
+                                <CardTitle className="text-base">{SECTION_META.core.label}</CardTitle>
+                                <Badge variant="secondary" className="text-[10px]">{coreIds.length}</Badge>
+                            </div>
+                            <CardDescription className="text-xs">{SECTION_META.core.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                            <SortableContext items={coreIds} strategy={verticalListSortingStrategy}>
+                                <div className="divide-y min-h-[48px]">
+                                    {coreIds.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-6 text-center">
+                                            Drag fields here to add them to Contact Info
+                                        </p>
+                                    ) : (
+                                        coreIds.map((id) => {
+                                            const field = fieldMap.get(id)
+                                            if (!field) return null
+                                            return (
+                                                <SortableFieldRow
+                                                    key={id}
+                                                    field={field}
+                                                    onToggleMask={toggleMask}
+                                                    onDelete={deleteField}
+                                                />
+                                            )
+                                        })
+                                    )}
+                                </div>
+                            </SortableContext>
+                        </CardContent>
+                    </DroppableSection>
 
                     {/* Details Section */}
-                    <SectionCard
-                        sectionKey="detail"
-                        fields={detailFields}
-                        onToggleMask={toggleMask}
-                        onDelete={deleteField}
-                    />
+                    <DroppableSection sectionKey="detail" fieldIds={detailIds}>
+                        <CardHeader className="pb-3">
+                            <div className="flex items-center gap-2">
+                                <CardTitle className="text-base">{SECTION_META.detail.label}</CardTitle>
+                                <Badge variant="secondary" className="text-[10px]">{detailIds.length}</Badge>
+                            </div>
+                            <CardDescription className="text-xs">{SECTION_META.detail.description}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                            <SortableContext items={detailIds} strategy={verticalListSortingStrategy}>
+                                <div className="divide-y min-h-[48px]">
+                                    {detailIds.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground py-6 text-center">
+                                            Drag fields here to add them to Details
+                                        </p>
+                                    ) : (
+                                        detailIds.map((id) => {
+                                            const field = fieldMap.get(id)
+                                            if (!field) return null
+                                            return (
+                                                <SortableFieldRow
+                                                    key={id}
+                                                    field={field}
+                                                    onToggleMask={toggleMask}
+                                                    onDelete={deleteField}
+                                                />
+                                            )
+                                        })
+                                    )}
+                                </div>
+                            </SortableContext>
+                        </CardContent>
+                    </DroppableSection>
 
                     {/* Drag overlay — shows a ghost of the dragged item */}
                     <DragOverlay>
@@ -317,48 +446,23 @@ export function LeadFormTab() {
     )
 }
 
-// ─── Section Card ──────────────────────────────────────────────
+// ─── Droppable Section Container ───────────────────────────────
 
-interface SectionCardProps {
+interface DroppableSectionProps {
     sectionKey: string
-    fields: FieldDefinition[]
-    onToggleMask: (id: string, masked: boolean) => void
-    onDelete: (id: string) => Promise<unknown>
+    fieldIds: string[]
+    children: React.ReactNode
 }
 
-function SectionCard({ sectionKey, fields, onToggleMask, onDelete }: SectionCardProps) {
-    const meta = SECTION_META[sectionKey] ?? { label: sectionKey, description: "" }
-    const fieldIds = useMemo(() => fields.map((f) => f.id), [fields])
+function DroppableSection({ sectionKey, children }: DroppableSectionProps) {
+    const { setNodeRef, isOver } = useDroppable({ id: sectionKey })
 
     return (
-        <Card>
-            <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                    <CardTitle className="text-base">{meta.label}</CardTitle>
-                    <Badge variant="secondary" className="text-[10px]">{fields.length}</Badge>
-                </div>
-                <CardDescription className="text-xs">{meta.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-                <SortableContext items={fieldIds} strategy={verticalListSortingStrategy}>
-                    <div className="divide-y">
-                        {fields.length === 0 ? (
-                            <p className="text-sm text-muted-foreground py-6 text-center">
-                                Drag fields here to add them to {meta.label}
-                            </p>
-                        ) : (
-                            fields.map((field) => (
-                                <SortableFieldRow
-                                    key={field.id}
-                                    field={field}
-                                    onToggleMask={onToggleMask}
-                                    onDelete={onDelete}
-                                />
-                            ))
-                        )}
-                    </div>
-                </SortableContext>
-            </CardContent>
+        <Card
+            ref={setNodeRef}
+            className={`transition-colors ${isOver ? "ring-2 ring-blue-400 ring-offset-2" : ""}`}
+        >
+            {children}
         </Card>
     )
 }
