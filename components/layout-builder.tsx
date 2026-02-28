@@ -70,16 +70,44 @@ export function LayoutBuilder() {
     // Local, mutable state for drag and drop
     const [localSchema, setLocalSchema] = useState<ViewSchemaData | null>(null)
     const [activeId, setActiveId] = useState<string | null>(null)
-    const [activeItemType, setActiveItemType] = useState<"field" | "widget" | null>(null)
+    const [activeItemType, setActiveItemType] = useState<"field" | "widget" | "section" | null>(null)
 
-    // Sync from DB once loaded
+    // Sync from database
     useMemo(() => {
         if (dbSchema && !localSchema) {
             setLocalSchema(cloneSchema(dbSchema.schema))
         }
     }, [dbSchema, localSchema])
 
-    // Setup DnD Sensors
+    // Compute assigned items to power the Available Palette
+    const assignedItemIds = useMemo(() => {
+        const ids = new Set<string>()
+        if (!localSchema?.columns) return ids
+        localSchema.columns.forEach(c => c.sections.forEach(s => s.items.forEach(i => {
+            if (i.type === "field" && i.fieldKey) ids.add(i.fieldKey)
+            if (i.type === "widget" && i.widgetId) ids.add(i.widgetId)
+        })))
+        return ids
+    }, [localSchema])
+
+    // Compute available items for the Palette
+    const availableItems = useMemo(() => {
+        const items: ViewItem[] = []
+        // Unused widgets
+        AVAILABLE_WIDGETS.forEach(w => {
+            if (!assignedItemIds.has(w.id)) {
+                items.push({ id: `avail-widget-${w.id}`, type: "widget", widgetId: w.id })
+            }
+        })
+        // Unused fields
+        fieldDefinitions.forEach(f => {
+            if (!assignedItemIds.has(f.fieldKey)) {
+                items.push({ id: `avail-field-${f.fieldKey}`, type: "field", fieldKey: f.fieldKey })
+            }
+        })
+        return items
+    }, [fieldDefinitions, assignedItemIds])
+
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -104,11 +132,21 @@ export function LayoutBuilder() {
         const { active } = event
         setActiveId(active.id as string)
 
+        const activeData = active.data.current
+        if (activeData?.type === "section") {
+            setActiveItemType("section")
+            return
+        }
+
         // Peek at the dragged item to format the overlay
         const sec = findSectionOfItem(active.id as string)
         if (sec) {
             const item = sec.items.find(i => i.id === active.id)
             if (item) setActiveItemType(item.type)
+        } else if (active.id.toString().startsWith("avail-widget")) {
+            setActiveItemType("widget")
+        } else {
+            setActiveItemType("field")
         }
     }
 
@@ -121,12 +159,41 @@ export function LayoutBuilder() {
 
         if (activeId === overId) return
 
+        const activeData = active.data.current
+        const overData = over.data.current
+
+        // SECTION REORDERING LOGIC
+        if (activeData?.type === "section") {
+            if (overData?.type === "section") {
+                setLocalSchema(prev => {
+                    if (!prev || !prev.columns) return prev
+                    const next = cloneSchema(prev)
+                    const activeColIdx = activeData.colIdx
+                    const activeSecIdx = activeData.secIdx
+                    const overColIdx = overData.colIdx
+                    const overSecIdx = overData.secIdx
+
+                    // Assuming we only reorder within the same column for now
+                    if (activeColIdx === overColIdx && activeColIdx !== undefined) {
+                        next.columns![activeColIdx].sections = arrayMove(
+                            next.columns![activeColIdx].sections,
+                            activeSecIdx,
+                            overSecIdx
+                        )
+                        return next
+                    }
+                    return prev
+                })
+            }
+            return
+        }
+
         setLocalSchema(prev => {
             if (!prev || !prev.columns) return prev
 
             const next = cloneSchema(prev)
 
-            // Find active piece
+            // Find active piece in schema
             let activeColIdx = -1, activeSecIdx = -1, activeItemIdx = -1
             let activeItem: ViewItem | null = null
 
@@ -142,7 +209,28 @@ export function LayoutBuilder() {
                 if (activeItem) break
             }
 
+            // If it's not in the schema, it might be dragging from the palette!
+            const isActiveFromPalette = activeId.startsWith("avail-")
+            if (!activeItem && isActiveFromPalette) {
+                if (activeId.startsWith("avail-field-")) {
+                    activeItem = { id: activeId, type: "field", fieldKey: activeId.replace("avail-field-", "") }
+                } else if (activeId.startsWith("avail-widget-")) {
+                    activeItem = { id: activeId, type: "widget", widgetId: activeId.replace("avail-widget-", "") }
+                }
+            }
+
             if (!activeItem) return prev
+
+            // --- PALETTE DROP TARGET ---
+            if (overId === "palette-zone") {
+                // Dragging TO the palette. Remove it from its current section
+                if (activeColIdx > -1) {
+                    next.columns![activeColIdx].sections[activeSecIdx].items.splice(activeItemIdx, 1)
+                    return next
+                }
+                // If it was already in palette, nothing changes locally
+                return prev
+            }
 
             // Check if hovering over a section itself (empty container)
             let overColIdx = -1, overSecIdx = -1
@@ -225,6 +313,41 @@ export function LayoutBuilder() {
         })
     }
 
+    const handleRemoveItem = (itemId: string) => {
+        setLocalSchema(prev => {
+            if (!prev || !prev.columns) return prev
+            const next = cloneSchema(prev)
+            for (let c = 0; c < next.columns!.length; c++) {
+                for (let s = 0; s < next.columns![c].sections.length; s++) {
+                    const idx = next.columns![c].sections[s].items.findIndex(i => i.id === itemId)
+                    if (idx > -1) {
+                        next.columns![c].sections[s].items.splice(idx, 1)
+                        return next
+                    }
+                }
+            }
+            return next
+        })
+    }
+
+    const handleRemoveSection = (colIdx: number, secIdx: number) => {
+        setLocalSchema(prev => {
+            if (!prev || !prev.columns) return prev
+            const next = cloneSchema(prev)
+            next.columns![colIdx].sections.splice(secIdx, 1)
+            return next
+        })
+    }
+
+    const handleRenameSection = (colIdx: number, secIdx: number, newName: string) => {
+        setLocalSchema(prev => {
+            if (!prev || !prev.columns) return prev
+            const next = cloneSchema(prev)
+            next.columns![colIdx].sections[secIdx].name = newName
+            return next
+        })
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -246,29 +369,50 @@ export function LayoutBuilder() {
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
             >
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {localSchema.columns.map((col, colIdx) => (
-                        <div key={col.id} className="space-y-4">
-                            <div className="font-semibold text-muted-foreground uppercase text-xs tracking-wider flex items-center justify-between">
-                                Column {colIdx + 1}
-                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(colIdx)}>
-                                    <Plus className="h-4 w-4" />
-                                </Button>
-                            </div>
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    {/* PALETTE COL */}
+                    <div className="col-span-1 border-r pr-6 space-y-4">
+                        <DroppablePaletteContainer items={availableItems} fieldDefs={fieldDefinitions} />
+                    </div>
 
-                            {col.sections.map((section) => (
-                                <DroppableSectionContainer key={section.id} section={section} fieldDefs={fieldDefinitions} />
-                            ))}
-                        </div>
-                    ))}
+                    {/* LAYOUT COLS */}
+                    <div className="col-span-1 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {localSchema.columns.map((col, colIdx) => (
+                            <div key={col.id} className="space-y-4">
+                                <div className="font-semibold text-muted-foreground uppercase text-xs tracking-wider flex items-center justify-between">
+                                    Column {colIdx + 1}
+                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(colIdx)}>
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+
+                                <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                                    <div className="space-y-4 min-h-[50px]">
+                                        {col.sections.map((section, secIdx) => (
+                                            <DroppableSectionContainer
+                                                key={section.id}
+                                                section={section}
+                                                fieldDefs={fieldDefinitions}
+                                                colIdx={colIdx}
+                                                secIdx={secIdx}
+                                                onRemoveSection={handleRemoveSection}
+                                                onRenameSection={handleRenameSection}
+                                                onRemoveItem={handleRemoveItem}
+                                            />
+                                        ))}
+                                    </div>
+                                </SortableContext>
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 <DragOverlay>
                     {activeId ? (
                         <div className="p-3 bg-secondary border rounded shadow-lg opacity-80 flex items-center gap-2">
                             <GripVertical className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm">
-                                {activeItemType === "widget" ? "Widget" : "Field"} moving...
+                            <span className="font-medium text-sm capitalize">
+                                {activeItemType} moving...
                             </span>
                         </div>
                     ) : null}
@@ -280,23 +424,94 @@ export function LayoutBuilder() {
 
 // --- SUB-COMPONENTS ---
 
-function DroppableSectionContainer({ section, fieldDefs }: { section: ViewSection, fieldDefs: FieldDefinition[] }) {
-    const { setNodeRef } = useDroppable({ id: section.id })
+function DroppablePaletteContainer({ items, fieldDefs }: { items: ViewItem[], fieldDefs: FieldDefinition[] }) {
+    const { setNodeRef } = useDroppable({ id: "palette-zone" })
+    const itemIds = useMemo(() => items.map(i => i.id), [items])
+
+    return (
+        <Card ref={setNodeRef} className="bg-muted/30 border-dashed min-h-[500px]">
+            <CardHeader className="py-3 px-4 border-b bg-muted/20">
+                <h3 className="text-sm font-semibold">Available Items</h3>
+                <p className="text-xs text-muted-foreground">Drag fields and widgets into your layout.</p>
+            </CardHeader>
+            <CardContent className="p-2 space-y-1">
+                <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+                    {items.map(item => (
+                        <SortableItemRow key={item.id} item={item} fieldDefs={fieldDefs} isPaletteItem />
+                    ))}
+                    {items.length === 0 && (
+                        <div className="p-4 text-center text-xs text-muted-foreground opacity-70">
+                            All items are in use.
+                        </div>
+                    )}
+                </SortableContext>
+            </CardContent>
+        </Card>
+    )
+}
+
+function DroppableSectionContainer({
+    section,
+    fieldDefs,
+    colIdx,
+    secIdx,
+    onRemoveSection,
+    onRenameSection,
+    onRemoveItem
+}: {
+    section: ViewSection,
+    fieldDefs: FieldDefinition[],
+    colIdx: number,
+    secIdx: number,
+    onRemoveSection: (c: number, s: number) => void,
+    onRenameSection: (c: number, s: number, name: string) => void,
+    onRemoveItem: (id: string) => void
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({
+        id: section.id,
+        data: { type: "section", colIdx, secIdx }
+    })
 
     const itemIds = useMemo(() => section.items.map(i => i.id), [section.items])
 
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+    }
+
     return (
-        <Card ref={setNodeRef} className="bg-card">
-            <CardHeader className="py-3 px-4 border-b bg-muted/20 flex flex-row items-center justify-between">
-                <Input
-                    defaultValue={section.name}
-                    className="h-7 w-[200px] text-sm font-semibold border-none bg-transparent hover:bg-background focus:bg-background px-1 -ml-1"
-                />
+        <Card ref={setNodeRef} style={style} className="bg-card">
+            <CardHeader className="py-2 px-3 border-b bg-muted/20 flex flex-row items-center justify-between group">
+                <div className="flex flex-1 items-center gap-2">
+                    <button
+                        className="cursor-move text-muted-foreground hover:text-foreground touch-none p-1 rounded hover:bg-muted"
+                        {...attributes}
+                        {...listeners}
+                    >
+                        <GripVertical className="h-4 w-4" />
+                    </button>
+                    <Input
+                        value={section.name}
+                        onChange={(e) => onRenameSection(colIdx, secIdx, e.target.value)}
+                        className="h-7 max-w-[200px] flex-1 text-sm font-semibold border-none bg-transparent hover:bg-background focus:bg-background px-1 -ml-1 transition-all"
+                    />
+                </div>
+                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => onRemoveSection(colIdx, secIdx)}>
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" />
+                </Button>
             </CardHeader>
             <CardContent className="p-2 space-y-1 min-h-[50px]">
                 <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
                     {section.items.map((item) => (
-                        <SortableItemRow key={item.id} item={item} fieldDefs={fieldDefs} />
+                        <SortableItemRow key={item.id} item={item} fieldDefs={fieldDefs} onRemove={onRemoveItem} />
                     ))}
                     {section.items.length === 0 && (
                         <div className="p-4 text-center text-xs text-muted-foreground border border-dashed rounded bg-muted/50">
@@ -309,7 +524,7 @@ function DroppableSectionContainer({ section, fieldDefs }: { section: ViewSectio
     )
 }
 
-function SortableItemRow({ item, fieldDefs }: { item: ViewItem, fieldDefs: FieldDefinition[] }) {
+function SortableItemRow({ item, fieldDefs, isPaletteItem, onRemove }: { item: ViewItem, fieldDefs: FieldDefinition[], isPaletteItem?: boolean, onRemove?: (id: string) => void }) {
     const {
         attributes,
         listeners,
@@ -357,11 +572,13 @@ function SortableItemRow({ item, fieldDefs }: { item: ViewItem, fieldDefs: Field
                 )}
             </div>
 
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
-                </Button>
-            </div>
+            {!isPaletteItem && (
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onRemove?.(item.id) }}>
+                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
+                    </Button>
+                </div>
+            )}
         </div>
     )
 }
