@@ -239,6 +239,8 @@ export interface ViewSchemaData {
   columns?: ViewColumn[]
   // For leads_table / add_lead: single list of visible fields/columns
   fields?: string[] // array of fieldKeys
+  // For leads_table: ordered list of visible column keys (built-in + custom field keys)
+  tableColumns?: string[]
 }
 
 export interface ViewSchema {

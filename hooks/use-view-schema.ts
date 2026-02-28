@@ -80,9 +80,9 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
     }
 
     if (viewType === "leads_table") {
-        // Top 3 fields by default
         return {
-            fields: fields.slice(0, 3).map(f => f.fieldKey)
+            fields: fields.slice(0, 3).map(f => f.fieldKey),
+            tableColumns: ["company", "phone", "stage", "segment", "last_outcome", "next_action"]
         }
     }
 

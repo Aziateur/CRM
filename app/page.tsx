@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { useProjectId } from "@/hooks/use-project-id"
@@ -12,6 +12,7 @@ import { useTasks } from "@/hooks/use-tasks"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { useTags, useAllLeadTags } from "@/hooks/use-tags"
 import { LeadsTable, deriveLeadFields, type LeadWithDerived } from "@/components/leads-table"
+import { useViewSchema } from "@/hooks/use-view-schema"
 import { KanbanBoard } from "@/components/kanban-board"
 import { TasksDashboard } from "@/components/tasks-dashboard"
 import { LeadDrawer } from "@/components/lead-drawer"
@@ -62,6 +63,14 @@ export default function LeadsPage() {
   const { leadTagsMap } = useAllLeadTags()
   const { presets, savePreset, deletePreset } = useViewPresets("lead")
   const { segments, segmentMap } = useSegmentMap()
+  const { schema: tableSchema, saveSchema: saveTableSchema } = useViewSchema("leads_table")
+
+  // Table columns from schema
+  const tableColumns = tableSchema?.schema?.tableColumns
+  const handleTableColumnsChange = useCallback(async (cols: string[]) => {
+    if (!tableSchema?.schema) return
+    await saveTableSchema({ ...tableSchema.schema, tableColumns: cols })
+  }, [tableSchema, saveTableSchema])
 
   // View mode
   const [viewMode, setViewMode] = useState<ViewMode>("table")
@@ -319,6 +328,8 @@ export default function LeadsPage() {
             onSelectLead={openLeadDrawer}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
+            tableColumns={tableColumns}
+            onTableColumnsChange={handleTableColumnsChange}
           />
         ) : (
           <KanbanBoard
