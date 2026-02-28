@@ -291,12 +291,6 @@ function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, o
             {/* Drag handle placeholder */}
             <GripVertical className="h-4 w-4 text-muted-foreground/40 shrink-0" />
 
-            {/* Visibility toggle */}
-            <Switch
-                checked={!field.isMasked}
-                onCheckedChange={(checked) => onToggleMask(!checked)}
-                className="shrink-0"
-            />
 
             {/* Label */}
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -330,64 +324,63 @@ function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, o
             {/* Type display */}
             <span className="text-xs text-muted-foreground w-16 text-right shrink-0 capitalize">{field.fieldType}</span>
 
-            {/* Direct action buttons — each wrapped in its own AlertDialog */}
+            {/* Action buttons — ↑ Promote, ↓ Demote, 🗑 Delete */}
             <div className="flex items-center gap-0.5 shrink-0">
-                {/* Promote / Demote */}
-                {!field.isPromoted ? (
-                    <AlertDialog>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <AlertDialogTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7">
-                                        <ArrowUpCircle className="h-3.5 w-3.5" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent side="top"><p>Promote to Column</p></TooltipContent>
-                        </Tooltip>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Promote to Column — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => runAction(onPromote)} disabled={acting}>
-                                    {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Promoting...</> : "Promote"}
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                ) : (
-                    <AlertDialog>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <AlertDialogTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7">
-                                        <ArrowDownCircle className="h-3.5 w-3.5" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent side="top"><p>Demote to Custom</p></TooltipContent>
-                        </Tooltip>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Demote to Custom Field — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => runAction(onDemote)} disabled={acting} className="bg-red-600 hover:bg-red-700">
-                                    {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Demoting...</> : "Demote"}
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                )}
+                {/* Promote */}
+                <AlertDialog>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                                <Button size="icon" variant="ghost" className={`h-7 w-7 ${field.isPromoted ? "opacity-30 cursor-not-allowed" : ""}`} disabled={field.isPromoted}>
+                                    <ArrowUpCircle className="h-3.5 w-3.5" />
+                                </Button>
+                            </AlertDialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent side="top"><p>{field.isPromoted ? "Already promoted" : "Promote to Column"}</p></TooltipContent>
+                    </Tooltip>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Promote to Column — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => runAction(onPromote)} disabled={acting}>
+                                {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Promoting...</> : "Promote"}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
+                {/* Demote */}
+                <AlertDialog>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                                <Button size="icon" variant="ghost" className={`h-7 w-7 ${!field.isPromoted ? "opacity-30 cursor-not-allowed" : ""}`} disabled={!field.isPromoted}>
+                                    <ArrowDownCircle className="h-3.5 w-3.5" />
+                                </Button>
+                            </AlertDialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent side="top"><p>{!field.isPromoted ? "Not promoted" : "Demote to Custom"}</p></TooltipContent>
+                    </Tooltip>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Demote to Custom Field — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => runAction(onDemote)} disabled={acting} className="bg-red-600 hover:bg-red-700">
+                                {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Demoting...</> : "Demote"}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
 
                 {/* Delete */}
                 <AlertDialog>
