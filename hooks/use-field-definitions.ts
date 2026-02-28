@@ -274,5 +274,34 @@ export function useFieldDefinitions(entityType = "lead") {
     }
   }, [toast])
 
-  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField, demoteField, toggleMask }
+  const reorderFields = useCallback(async (updates: { id: string; position: number; section: FieldSection }[]) => {
+    // Optimistic UI update
+    setFields((prev) => {
+      const map = new Map(updates.map((u) => [u.id, u]))
+      return prev
+        .map((f) => {
+          const u = map.get(f.id)
+          return u ? { ...f, position: u.position, section: u.section } : f
+        })
+        .sort((a, b) => a.position - b.position)
+    })
+
+    // Persist to database
+    try {
+      const supabase = getSupabase()
+      await Promise.all(
+        updates.map((u) =>
+          supabase
+            .from("field_definitions")
+            .update({ position: u.position, section: u.section })
+            .eq("id", u.id)
+        )
+      )
+    } catch {
+      // Revert on next fetch
+      await fetchFields()
+    }
+  }, [fetchFields])
+
+  return { fields, loading, refetch: fetchFields, createField, updateField, deleteField, moveField, promoteField, demoteField, toggleMask, reorderFields }
 }

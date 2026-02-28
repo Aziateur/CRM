@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -41,16 +41,36 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 import {
-    Eye,
-    EyeOff,
-    ArrowUpCircle,
-    ArrowDownCircle,
     Trash2,
     GripVertical,
     Loader2,
     Plus,
 } from "lucide-react"
 import type { FieldDefinition, FieldSection, FieldType } from "@/lib/store"
+
+// ─── DnD Kit ───────────────────────────────────────────────────
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragOverlay,
+    DragStartEvent,
+    DragEndEvent,
+    DragOverEvent,
+} from "@dnd-kit/core"
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+
+// ─── Constants ─────────────────────────────────────────────────
 
 const FIELD_TYPES: { key: FieldType; label: string; icon: string }[] = [
     { key: "text", label: "Text", icon: "Aa" },
@@ -68,45 +88,125 @@ const SECTION_META: Record<string, { label: string; description: string }> = {
     detail: { label: "Details", description: "Additional information fields shown below contact info" },
 }
 
+/** System fields that cannot be deleted (but CAN be hidden/reordered) */
+const SYSTEM_FIELD_KEYS = new Set(["phone", "email", "company"])
+
 function slugify(label: string): string {
     return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
 }
+
+// ─── Main Component ────────────────────────────────────────────
 
 export function LeadFormTab() {
     const {
         fields,
         loading,
         toggleMask,
-        promoteField,
-        demoteField,
         deleteField,
-        updateField,
         createField,
+        reorderFields,
     } = useFieldDefinitions("lead")
 
     const [showAddField, setShowAddField] = useState(false)
     const [newFieldLabel, setNewFieldLabel] = useState("")
     const [newFieldType, setNewFieldType] = useState<FieldType>("text")
     const [newFieldSection, setNewFieldSection] = useState<FieldSection>("detail")
-    const [addingField, setAddingField] = useState(false)
+    const [creating, setCreating] = useState(false)
+    const [activeId, setActiveId] = useState<string | null>(null)
 
-    const handleAddField = async () => {
+    // Split fields into sections
+    const coreFields = useMemo(
+        () => fields.filter((f) => f.section === "core").sort((a, b) => a.position - b.position),
+        [fields]
+    )
+    const detailFields = useMemo(
+        () => fields.filter((f) => f.section === "detail").sort((a, b) => a.position - b.position),
+        [fields]
+    )
+
+    const activeField = activeId ? fields.find((f) => f.id === activeId) : null
+
+    // DnD sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    )
+
+    // ── Drag handlers ──
+
+    function handleDragStart(event: DragStartEvent) {
+        setActiveId(event.active.id as string)
+    }
+
+    function handleDragEnd(event: DragEndEvent) {
+        const { active, over } = event
+        setActiveId(null)
+        if (!over || active.id === over.id) return
+
+        const activeField = fields.find((f) => f.id === active.id)
+        const overField = fields.find((f) => f.id === over.id)
+        if (!activeField || !overField) return
+
+        // Determine target section from the over field
+        const targetSection = overField.section
+
+        // Build the full list for the target section
+        const sourceSectionFields = fields
+            .filter((f) => f.section === activeField.section)
+            .sort((a, b) => a.position - b.position)
+        const targetSectionFields = fields
+            .filter((f) => f.section === targetSection)
+            .sort((a, b) => a.position - b.position)
+
+        const updates: { id: string; position: number; section: FieldSection }[] = []
+
+        if (activeField.section === targetSection) {
+            // Same section — simple reorder
+            const oldIndex = sourceSectionFields.findIndex((f) => f.id === active.id)
+            const newIndex = sourceSectionFields.findIndex((f) => f.id === over.id)
+            const reordered = arrayMove(sourceSectionFields, oldIndex, newIndex)
+            reordered.forEach((f, i) => {
+                updates.push({ id: f.id, position: i, section: targetSection })
+            })
+        } else {
+            // Cross-section move
+            // Remove from source
+            const filteredSource = sourceSectionFields.filter((f) => f.id !== active.id)
+            filteredSource.forEach((f, i) => {
+                updates.push({ id: f.id, position: i, section: activeField.section })
+            })
+            // Insert into target at the over position
+            const overIndex = targetSectionFields.findIndex((f) => f.id === over.id)
+            const newTarget = [...targetSectionFields]
+            newTarget.splice(overIndex, 0, activeField)
+            newTarget.forEach((f, i) => {
+                updates.push({ id: f.id, position: i, section: targetSection })
+            })
+        }
+
+        reorderFields(updates)
+    }
+
+    // ── Add field ──
+
+    async function handleAddField() {
         if (!newFieldLabel.trim()) return
-        setAddingField(true)
-        const result = await createField({
-            fieldKey: slugify(newFieldLabel),
+        setCreating(true)
+        const key = slugify(newFieldLabel)
+        await createField({
+            fieldKey: key,
             fieldLabel: newFieldLabel.trim(),
             fieldType: newFieldType,
             section: newFieldSection,
         })
-        if (result) {
-            setShowAddField(false)
-            setNewFieldLabel("")
-            setNewFieldType("text")
-            setNewFieldSection("detail")
-        }
-        setAddingField(false)
+        setNewFieldLabel("")
+        setNewFieldType("text")
+        setNewFieldSection("detail")
+        setShowAddField(false)
+        setCreating(false)
     }
+
+    // ── Render ──
 
     if (loading) {
         return (
@@ -116,17 +216,15 @@ export function LeadFormTab() {
         )
     }
 
-    const sections: FieldSection[] = ["core", "detail"]
-
     return (
-        <TooltipProvider delayDuration={300}>
+        <TooltipProvider delayDuration={200}>
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className="text-lg font-semibold">Lead Form Layout</h2>
+                        <h3 className="text-lg font-semibold">Lead Form Fields</h3>
                         <p className="text-sm text-muted-foreground">
-                            Control which fields appear on the lead form, their section, and their status.
+                            Drag to reorder, toggle visibility, or move fields between sections
                         </p>
                     </div>
                     <Button onClick={() => setShowAddField(true)} size="sm">
@@ -134,124 +232,82 @@ export function LeadFormTab() {
                     </Button>
                 </div>
 
-                {/* Legend */}
-                <div className="flex flex-wrap gap-3 text-xs">
-                    <div className="flex items-center gap-1.5">
-                        <Badge variant="secondary" className="text-[9px] px-1.5">Native</Badge>
-                        <span className="text-muted-foreground">Built-in, always visible</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <Badge variant="default" className="text-[9px] px-1.5 bg-emerald-600">Column</Badge>
-                        <span className="text-muted-foreground">Promoted to DB column</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <Badge variant="outline" className="text-[9px] px-1.5">Custom</Badge>
-                        <span className="text-muted-foreground">JSONB, maskable</span>
-                    </div>
-                </div>
+                {/* DnD Context wraps BOTH sections */}
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                >
+                    {/* Contact Info Section */}
+                    <SectionCard
+                        sectionKey="core"
+                        fields={coreFields}
+                        onToggleMask={toggleMask}
+                        onDelete={deleteField}
+                    />
 
-                {/* Section cards */}
-                {sections.map((section) => {
-                    const sectionFields = fields.filter((f) => f.section === section).sort((a, b) => a.position - b.position)
-                    const meta = SECTION_META[section]
-                    const hiddenCount = sectionFields.filter((f) => f.isMasked).length
+                    {/* Details Section */}
+                    <SectionCard
+                        sectionKey="detail"
+                        fields={detailFields}
+                        onToggleMask={toggleMask}
+                        onDelete={deleteField}
+                    />
 
-                    return (
-                        <Card key={section}>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle className="text-base">{meta?.label ?? section}</CardTitle>
-                                        <CardDescription>{meta?.description}</CardDescription>
-                                    </div>
-                                    {hiddenCount > 0 && (
-                                        <Badge variant="outline" className="text-xs">
-                                            <EyeOff className="h-3 w-3 mr-1" />{hiddenCount} hidden
-                                        </Badge>
-                                    )}
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                {sectionFields.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground py-4 text-center">No fields in this section</p>
-                                ) : (
-                                    <div className="divide-y">
-                                        {sectionFields.map((field) => (
-                                            <FieldRow
-                                                key={field.id}
-                                                field={field}
-                                                onToggleMask={(masked) => toggleMask(field.id, masked)}
-                                                onSectionChange={(s) => updateField(field.id, { section: s })}
-                                                onPromote={() => promoteField(field.id)}
-                                                onDemote={() => demoteField(field.id)}
-                                                onDelete={() => deleteField(field.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    )
-                })}
+                    {/* Drag overlay — shows a ghost of the dragged item */}
+                    <DragOverlay>
+                        {activeField ? (
+                            <FieldRowStatic field={activeField} isDragOverlay />
+                        ) : null}
+                    </DragOverlay>
+                </DndContext>
 
                 {/* Add Field Dialog */}
                 <Dialog open={showAddField} onOpenChange={setShowAddField}>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Add New Field</DialogTitle>
-                            <DialogDescription>
-                                Create a new custom field for your leads.
-                            </DialogDescription>
+                            <DialogDescription>Create a new custom field for leads.</DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4 py-2">
-                            <div className="space-y-2">
-                                <Label>Field Name</Label>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Label</Label>
                                 <Input
-                                    placeholder="e.g. Revenue, Industry, Priority..."
+                                    placeholder="e.g. LinkedIn URL"
                                     value={newFieldLabel}
                                     onChange={(e) => setNewFieldLabel(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === "Enter") handleAddField() }}
                                 />
-                                {newFieldLabel.trim() && (
-                                    <p className="text-xs text-muted-foreground">
-                                        Key: <code className="bg-muted px-1 rounded">{slugify(newFieldLabel)}</code>
-                                    </p>
+                                {newFieldLabel && (
+                                    <p className="text-xs text-muted-foreground">Key: {slugify(newFieldLabel)}</p>
                                 )}
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Type</Label>
-                                    <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as FieldType)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {FIELD_TYPES.map((ft) => (
-                                                <SelectItem key={ft.key} value={ft.key}>
-                                                    <span className="mr-2">{ft.icon}</span> {ft.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Section</Label>
-                                    <Select value={newFieldSection} onValueChange={(v) => setNewFieldSection(v as FieldSection)}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="core">Contact Info</SelectItem>
-                                            <SelectItem value="detail">Details</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                            <div className="grid gap-2">
+                                <Label>Type</Label>
+                                <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as FieldType)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {FIELD_TYPES.map((t) => (
+                                            <SelectItem key={t.key} value={t.key}>{t.icon} {t.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Section</Label>
+                                <Select value={newFieldSection} onValueChange={(v) => setNewFieldSection(v as FieldSection)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="core">Contact Info</SelectItem>
+                                        <SelectItem value="detail">Details</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => setShowAddField(false)} disabled={addingField}>Cancel</Button>
-                            <Button onClick={handleAddField} disabled={addingField || !newFieldLabel.trim()}>
-                                {addingField ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Adding...</> : <><Plus className="h-4 w-4 mr-1" /> Add Field</>}
+                            <Button variant="outline" onClick={() => setShowAddField(false)}>Cancel</Button>
+                            <Button onClick={handleAddField} disabled={creating || !newFieldLabel.trim()}>
+                                {creating ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Creating...</> : "Create Field"}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -261,24 +317,115 @@ export function LeadFormTab() {
     )
 }
 
-// ─── Individual field row ─────────────────────────────────────────────
-// ARCHITECTURE: Each action button is wrapped in its own AlertDialog
-// using the standard AlertDialogTrigger pattern. This is the Radix-
-// recommended way to open dialogs from buttons. No DropdownMenu, no
-// programmatic open state, no setTimeout, no focus conflicts.
-// ───────────────────────────────────────────────────────────────────────
-interface FieldRowProps {
-    field: FieldDefinition
-    onToggleMask: (masked: boolean) => void
-    onSectionChange: (section: FieldSection) => void
-    onPromote: () => Promise<unknown>
-    onDemote: () => Promise<unknown>
-    onDelete: () => Promise<unknown>
+// ─── Section Card ──────────────────────────────────────────────
+
+interface SectionCardProps {
+    sectionKey: string
+    fields: FieldDefinition[]
+    onToggleMask: (id: string, masked: boolean) => void
+    onDelete: (id: string) => Promise<unknown>
 }
 
-function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, onDelete }: FieldRowProps) {
-    const isNative = field.source === "native"
+function SectionCard({ sectionKey, fields, onToggleMask, onDelete }: SectionCardProps) {
+    const meta = SECTION_META[sectionKey] ?? { label: sectionKey, description: "" }
+    const fieldIds = useMemo(() => fields.map((f) => f.id), [fields])
+
+    return (
+        <Card>
+            <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">{meta.label}</CardTitle>
+                    <Badge variant="secondary" className="text-[10px]">{fields.length}</Badge>
+                </div>
+                <CardDescription className="text-xs">{meta.description}</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+                <SortableContext items={fieldIds} strategy={verticalListSortingStrategy}>
+                    <div className="divide-y">
+                        {fields.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-6 text-center">
+                                Drag fields here to add them to {meta.label}
+                            </p>
+                        ) : (
+                            fields.map((field) => (
+                                <SortableFieldRow
+                                    key={field.id}
+                                    field={field}
+                                    onToggleMask={onToggleMask}
+                                    onDelete={onDelete}
+                                />
+                            ))
+                        )}
+                    </div>
+                </SortableContext>
+            </CardContent>
+        </Card>
+    )
+}
+
+// ─── Sortable Field Row ────────────────────────────────────────
+
+interface SortableFieldRowProps {
+    field: FieldDefinition
+    onToggleMask: (id: string, masked: boolean) => void
+    onDelete: (id: string) => Promise<unknown>
+}
+
+function SortableFieldRow({ field, onToggleMask, onDelete }: SortableFieldRowProps) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: field.id })
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+    }
+
+    return (
+        <div ref={setNodeRef} style={style}>
+            <FieldRowContent
+                field={field}
+                onToggleMask={onToggleMask}
+                onDelete={onDelete}
+                dragHandleProps={{ ...attributes, ...listeners }}
+            />
+        </div>
+    )
+}
+
+// ─── Static Field Row (for DragOverlay) ────────────────────────
+
+function FieldRowStatic({ field, isDragOverlay }: { field: FieldDefinition; isDragOverlay?: boolean }) {
+    return (
+        <div className={isDragOverlay ? "bg-white border rounded-lg shadow-lg px-1" : ""}>
+            <FieldRowContent
+                field={field}
+                onToggleMask={() => { }}
+                onDelete={async () => { }}
+                dragHandleProps={{}}
+            />
+        </div>
+    )
+}
+
+// ─── Field Row Content (shared between sortable + overlay) ─────
+
+interface FieldRowContentProps {
+    field: FieldDefinition
+    onToggleMask: (id: string, masked: boolean) => void
+    onDelete: (id: string) => Promise<unknown>
+    dragHandleProps: Record<string, unknown>
+}
+
+function FieldRowContent({ field, onToggleMask, onDelete, dragHandleProps }: FieldRowContentProps) {
     const [acting, setActing] = useState(false)
+    const isSystem = SYSTEM_FIELD_KEYS.has(field.fieldKey)
 
     const runAction = async (fn: () => Promise<unknown>) => {
         setActing(true)
@@ -286,114 +433,48 @@ function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, o
         finally { setActing(false) }
     }
 
+    const sourceBadge = field.source === "native"
+        ? <Badge variant="secondary" className="text-[9px] shrink-0 px-1.5">System</Badge>
+        : field.isPromoted
+            ? <Badge variant="default" className="text-[9px] shrink-0 px-1.5 bg-emerald-600 hover:bg-emerald-600">Column</Badge>
+            : <Badge variant="outline" className="text-[9px] shrink-0 px-1.5">Custom</Badge>
+
     return (
         <div className={`flex items-center gap-3 py-3 px-1 ${field.isMasked ? "opacity-50" : ""}`}>
-            {/* Drag handle placeholder */}
-            <GripVertical className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+            {/* Drag handle */}
+            <button
+                className="cursor-grab active:cursor-grabbing touch-none shrink-0"
+                {...dragHandleProps}
+            >
+                <GripVertical className="h-4 w-4 text-muted-foreground/40" />
+            </button>
 
             {/* Visibility toggle */}
             <Switch
                 checked={!field.isMasked}
-                onCheckedChange={(checked) => onToggleMask(!checked)}
+                onCheckedChange={(checked) => onToggleMask(field.id, !checked)}
                 className="shrink-0"
             />
 
-            {/* Label */}
+            {/* Label + key */}
             <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="text-sm font-medium truncate">{field.fieldLabel}</span>
                 <span className="text-xs text-muted-foreground">({field.fieldKey})</span>
             </div>
 
-            {/* Status badge */}
-            {isNative ? (
-                <Badge variant="secondary" className="text-[9px] shrink-0 px-1.5">Native</Badge>
-            ) : field.isPromoted ? (
-                <Badge variant="default" className="text-[9px] shrink-0 px-1.5 bg-emerald-600 hover:bg-emerald-600">Column</Badge>
-            ) : (
-                <Badge variant="outline" className="text-[9px] shrink-0 px-1.5">Custom</Badge>
-            )}
+            {/* Source badge */}
+            {sourceBadge}
 
-            {/* Section selector */}
-            <Select
-                value={field.section || "detail"}
-                onValueChange={(val) => onSectionChange(val as FieldSection)}
-            >
-                <SelectTrigger className="w-28 h-8 text-xs">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="core">Contact Info</SelectItem>
-                    <SelectItem value="detail">Details</SelectItem>
-                </SelectContent>
-            </Select>
-
-            {/* Type display */}
+            {/* Type */}
             <span className="text-xs text-muted-foreground w-16 text-right shrink-0 capitalize">{field.fieldType}</span>
 
-            {/* Action buttons — ↑ Promote, ↓ Demote, 🗑 Delete */}
-            <div className="flex items-center gap-0.5 shrink-0">
-                {/* Promote */}
+            {/* Delete — hidden for system fields */}
+            {!isSystem ? (
                 <AlertDialog>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <AlertDialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className={`h-7 w-7 ${field.isPromoted ? "opacity-30 cursor-not-allowed" : ""}`} disabled={field.isPromoted}>
-                                    <ArrowUpCircle className="h-3.5 w-3.5" />
-                                </Button>
-                            </AlertDialogTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent side="top"><p>{field.isPromoted ? "Already promoted" : "Promote to Column"}</p></TooltipContent>
-                    </Tooltip>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Promote to Column — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => runAction(onPromote)} disabled={acting}>
-                                {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Promoting...</> : "Promote"}
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-
-                {/* Demote */}
-                <AlertDialog>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <AlertDialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className={`h-7 w-7 ${!field.isPromoted ? "opacity-30 cursor-not-allowed" : ""}`} disabled={!field.isPromoted}>
-                                    <ArrowDownCircle className="h-3.5 w-3.5" />
-                                </Button>
-                            </AlertDialogTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent side="top"><p>{!field.isPromoted ? "Not promoted" : "Demote to Custom"}</p></TooltipContent>
-                    </Tooltip>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>Demote to Custom Field — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => runAction(onDemote)} disabled={acting} className="bg-red-600 hover:bg-red-700">
-                                {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Demoting...</> : "Demote"}
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-
-                {/* Delete */}
-                <AlertDialog>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <AlertDialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50">
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0">
                                     <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                             </AlertDialogTrigger>
@@ -404,18 +485,20 @@ function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, o
                         <AlertDialogHeader>
                             <AlertDialogTitle>Delete Field — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
                             <AlertDialogDescription>
-                                This will remove the field definition. Existing data in leads won&apos;t be deleted but will no longer be accessible.
+                                This will remove the field definition. Existing data in leads won&apos;t be deleted but will no longer be accessible through the form.
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => runAction(onDelete)} disabled={acting} className="bg-red-600 hover:bg-red-700">
+                            <AlertDialogAction onClick={() => runAction(() => onDelete(field.id))} disabled={acting} className="bg-red-600 hover:bg-red-700">
                                 {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Deleting...</> : "Delete"}
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
-            </div>
+            ) : (
+                <div className="w-7 shrink-0" />
+            )}
         </div>
     )
 }
