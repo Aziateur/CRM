@@ -16,12 +16,6 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
     Dialog,
     DialogContent,
     DialogFooter,
@@ -38,11 +32,17 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
+    AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
     Eye,
     EyeOff,
-    MoreVertical,
     ArrowUpCircle,
     ArrowDownCircle,
     Trash2,
@@ -119,158 +119,153 @@ export function LeadFormTab() {
     const sections: FieldSection[] = ["core", "detail"]
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-lg font-semibold">Lead Form Layout</h2>
-                    <p className="text-sm text-muted-foreground">
-                        Control which fields appear on the lead form, their section, and their status.
-                    </p>
+        <TooltipProvider delayDuration={300}>
+            <div className="space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-lg font-semibold">Lead Form Layout</h2>
+                        <p className="text-sm text-muted-foreground">
+                            Control which fields appear on the lead form, their section, and their status.
+                        </p>
+                    </div>
+                    <Button onClick={() => setShowAddField(true)} size="sm">
+                        <Plus className="h-4 w-4 mr-1" /> Add Field
+                    </Button>
                 </div>
-                <Button onClick={() => setShowAddField(true)} size="sm">
-                    <Plus className="h-4 w-4 mr-1" /> Add Field
-                </Button>
-            </div>
 
-            {/* Legend */}
-            <div className="flex flex-wrap gap-3 text-xs">
-                <div className="flex items-center gap-1.5">
-                    <Badge variant="secondary" className="text-[9px] px-1.5">Native</Badge>
-                    <span className="text-muted-foreground">Built-in, always visible</span>
+                {/* Legend */}
+                <div className="flex flex-wrap gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                        <Badge variant="secondary" className="text-[9px] px-1.5">Native</Badge>
+                        <span className="text-muted-foreground">Built-in, always visible</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Badge variant="default" className="text-[9px] px-1.5 bg-emerald-600">Column</Badge>
+                        <span className="text-muted-foreground">Promoted to DB column</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Badge variant="outline" className="text-[9px] px-1.5">Custom</Badge>
+                        <span className="text-muted-foreground">JSONB, maskable</span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <Badge variant="default" className="text-[9px] px-1.5 bg-emerald-600">Column</Badge>
-                    <span className="text-muted-foreground">Promoted to DB column</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className="text-[9px] px-1.5">Custom</Badge>
-                    <span className="text-muted-foreground">JSONB, maskable</span>
-                </div>
-            </div>
 
-            {/* Section cards */}
-            {sections.map((section) => {
-                const sectionFields = fields.filter((f) => f.section === section).sort((a, b) => a.position - b.position)
-                const meta = SECTION_META[section]
-                const hiddenCount = sectionFields.filter((f) => f.isMasked).length
+                {/* Section cards */}
+                {sections.map((section) => {
+                    const sectionFields = fields.filter((f) => f.section === section).sort((a, b) => a.position - b.position)
+                    const meta = SECTION_META[section]
+                    const hiddenCount = sectionFields.filter((f) => f.isMasked).length
 
-                return (
-                    <Card key={section}>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="text-base">{meta?.label ?? section}</CardTitle>
-                                    <CardDescription>{meta?.description}</CardDescription>
+                    return (
+                        <Card key={section}>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle className="text-base">{meta?.label ?? section}</CardTitle>
+                                        <CardDescription>{meta?.description}</CardDescription>
+                                    </div>
+                                    {hiddenCount > 0 && (
+                                        <Badge variant="outline" className="text-xs">
+                                            <EyeOff className="h-3 w-3 mr-1" />{hiddenCount} hidden
+                                        </Badge>
+                                    )}
                                 </div>
-                                {hiddenCount > 0 && (
-                                    <Badge variant="outline" className="text-xs">
-                                        <EyeOff className="h-3 w-3 mr-1" />{hiddenCount} hidden
-                                    </Badge>
+                            </CardHeader>
+                            <CardContent>
+                                {sectionFields.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground py-4 text-center">No fields in this section</p>
+                                ) : (
+                                    <div className="divide-y">
+                                        {sectionFields.map((field) => (
+                                            <FieldRow
+                                                key={field.id}
+                                                field={field}
+                                                onToggleMask={(masked) => toggleMask(field.id, masked)}
+                                                onSectionChange={(s) => updateField(field.id, { section: s })}
+                                                onPromote={() => promoteField(field.id)}
+                                                onDemote={() => demoteField(field.id)}
+                                                onDelete={() => deleteField(field.id)}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )
+                })}
+
+                {/* Add Field Dialog */}
+                <Dialog open={showAddField} onOpenChange={setShowAddField}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add New Field</DialogTitle>
+                            <DialogDescription>
+                                Create a new custom field for your leads.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                                <Label>Field Name</Label>
+                                <Input
+                                    placeholder="e.g. Revenue, Industry, Priority..."
+                                    value={newFieldLabel}
+                                    onChange={(e) => setNewFieldLabel(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") handleAddField() }}
+                                />
+                                {newFieldLabel.trim() && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Key: <code className="bg-muted px-1 rounded">{slugify(newFieldLabel)}</code>
+                                    </p>
                                 )}
                             </div>
-                        </CardHeader>
-                        <CardContent>
-                            {sectionFields.length === 0 ? (
-                                <p className="text-sm text-muted-foreground py-4 text-center">No fields in this section</p>
-                            ) : (
-                                <div className="divide-y">
-                                    {sectionFields.map((field) => (
-                                        <FieldRow
-                                            key={field.id}
-                                            field={field}
-                                            onToggleMask={(masked) => toggleMask(field.id, masked)}
-                                            onSectionChange={(s) => updateField(field.id, { section: s })}
-                                            onPromote={() => promoteField(field.id)}
-                                            onDemote={() => demoteField(field.id)}
-                                            onDelete={() => deleteField(field.id)}
-                                        />
-                                    ))}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Type</Label>
+                                    <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as FieldType)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {FIELD_TYPES.map((ft) => (
+                                                <SelectItem key={ft.key} value={ft.key}>
+                                                    <span className="mr-2">{ft.icon}</span> {ft.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                )
-            })}
-
-            {/* Add Field Dialog */}
-            <Dialog open={showAddField} onOpenChange={setShowAddField}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Add New Field</DialogTitle>
-                        <DialogDescription>
-                            Create a new custom field for your leads.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div className="space-y-2">
-                            <Label>Field Name</Label>
-                            <Input
-                                placeholder="e.g. Revenue, Industry, Priority..."
-                                value={newFieldLabel}
-                                onChange={(e) => setNewFieldLabel(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === "Enter") handleAddField() }}
-                            />
-                            {newFieldLabel.trim() && (
-                                <p className="text-xs text-muted-foreground">
-                                    Key: <code className="bg-muted px-1 rounded">{slugify(newFieldLabel)}</code>
-                                </p>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Type</Label>
-                                <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as FieldType)}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {FIELD_TYPES.map((ft) => (
-                                            <SelectItem key={ft.key} value={ft.key}>
-                                                <span className="mr-2">{ft.icon}</span> {ft.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Section</Label>
-                                <Select value={newFieldSection} onValueChange={(v) => setNewFieldSection(v as FieldSection)}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="core">Contact Info</SelectItem>
-                                        <SelectItem value="detail">Details</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <div className="space-y-2">
+                                    <Label>Section</Label>
+                                    <Select value={newFieldSection} onValueChange={(v) => setNewFieldSection(v as FieldSection)}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="core">Contact Info</SelectItem>
+                                            <SelectItem value="detail">Details</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowAddField(false)} disabled={addingField}>Cancel</Button>
-                        <Button onClick={handleAddField} disabled={addingField || !newFieldLabel.trim()}>
-                            {addingField ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Adding...</> : <><Plus className="h-4 w-4 mr-1" /> Add Field</>}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShowAddField(false)} disabled={addingField}>Cancel</Button>
+                            <Button onClick={handleAddField} disabled={addingField || !newFieldLabel.trim()}>
+                                {addingField ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Adding...</> : <><Plus className="h-4 w-4 mr-1" /> Add Field</>}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            </div>
+        </TooltipProvider>
     )
 }
 
-// ─── Action labels ────────────────────────────────────────────────────
-const ACTION_META = {
-    promote: { title: "Promote to Column", description: "This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).", button: "Promote", destructive: false },
-    demote: { title: "Demote to Custom Field", description: "This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.", button: "Demote", destructive: true },
-    delete: { title: "Delete Field", description: "This will remove the field definition. Existing data in leads won't be deleted but will no longer be accessible.", button: "Delete", destructive: true },
-} as const
-
-// ─── Individual field row with SELF-CONTAINED dialogs ─────────────────
-// Each FieldRow manages its own AlertDialog. This eliminates the Radix
-// DropdownMenu ↔ AlertDialog cross-component focus trap conflict that
-// prevents the confirmation dialog from appearing when triggered from
-// a dropdown menu item in certain browsers/environments.
+// ─── Individual field row ─────────────────────────────────────────────
+// ARCHITECTURE: Each action button is wrapped in its own AlertDialog
+// using the standard AlertDialogTrigger pattern. This is the Radix-
+// recommended way to open dialogs from buttons. No DropdownMenu, no
+// programmatic open state, no setTimeout, no focus conflicts.
 // ───────────────────────────────────────────────────────────────────────
 interface FieldRowProps {
     field: FieldDefinition
@@ -283,23 +278,13 @@ interface FieldRowProps {
 
 function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, onDelete }: FieldRowProps) {
     const isNative = field.source === "native"
-    const [pendingAction, setPendingAction] = useState<"promote" | "demote" | "delete" | null>(null)
     const [acting, setActing] = useState(false)
 
-    const handleConfirm = async () => {
-        if (!pendingAction) return
+    const runAction = async (fn: () => Promise<unknown>) => {
         setActing(true)
-        try {
-            if (pendingAction === "promote") await onPromote()
-            else if (pendingAction === "demote") await onDemote()
-            else if (pendingAction === "delete") await onDelete()
-        } finally {
-            setActing(false)
-            setPendingAction(null)
-        }
+        try { await fn() }
+        finally { setActing(false) }
     }
-
-    const meta = pendingAction ? ACTION_META[pendingAction] : null
 
     return (
         <div className={`flex items-center gap-3 py-3 px-1 ${field.isMasked ? "opacity-50" : ""}`}>
@@ -346,64 +331,96 @@ function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, o
             {/* Type display */}
             <span className="text-xs text-muted-foreground w-16 text-right shrink-0 capitalize">{field.fieldType}</span>
 
-            {/* Actions — DropdownMenu triggers local state, AlertDialog is co-located */}
+            {/* Direct action buttons — each wrapped in its own AlertDialog */}
             {!isNative ? (
-                <>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
-                                <MoreVertical className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                            {!field.isPromoted && (
-                                <DropdownMenuItem onSelect={() => setTimeout(() => setPendingAction("promote"), 100)}>
-                                    <ArrowUpCircle className="h-4 w-4 mr-2" />
-                                    Promote to Column
-                                </DropdownMenuItem>
-                            )}
-                            {field.isPromoted && (
-                                <DropdownMenuItem onSelect={() => setTimeout(() => setPendingAction("demote"), 100)}>
-                                    <ArrowDownCircle className="h-4 w-4 mr-2" />
-                                    Demote to Custom
-                                </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                                onSelect={() => setTimeout(() => setPendingAction("delete"), 100)}
-                                className="text-red-600 focus:text-red-600"
-                            >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete Field
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                <div className="flex items-center gap-0.5 shrink-0">
+                    {/* Promote / Demote */}
+                    {!field.isPromoted ? (
+                        <AlertDialog>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <AlertDialogTrigger asChild>
+                                        <Button size="icon" variant="ghost" className="h-7 w-7">
+                                            <ArrowUpCircle className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent side="top"><p>Promote to Column</p></TooltipContent>
+                            </Tooltip>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Promote to Column — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => runAction(onPromote)} disabled={acting}>
+                                        {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Promoting...</> : "Promote"}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    ) : (
+                        <AlertDialog>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <AlertDialogTrigger asChild>
+                                        <Button size="icon" variant="ghost" className="h-7 w-7">
+                                            <ArrowDownCircle className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent side="top"><p>Demote to Custom</p></TooltipContent>
+                            </Tooltip>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Demote to Custom Field — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => runAction(onDemote)} disabled={acting} className="bg-red-600 hover:bg-red-700">
+                                        {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Demoting...</> : "Demote"}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    )}
 
-                    {/* Self-contained confirmation dialog per row */}
-                    <AlertDialog open={!!pendingAction} onOpenChange={(open) => { if (!open) setPendingAction(null) }}>
+                    {/* Delete */}
+                    <AlertDialog>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent side="top"><p>Delete Field</p></TooltipContent>
+                        </Tooltip>
                         <AlertDialogContent>
                             <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                    {meta ? `${meta.title} — "${field.fieldLabel}"` : ""}
-                                </AlertDialogTitle>
+                                <AlertDialogTitle>Delete Field — &ldquo;{field.fieldLabel}&rdquo;</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                    {meta?.description ?? ""}
+                                    This will remove the field definition. Existing data in leads won&apos;t be deleted but will no longer be accessible.
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                                 <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                    onClick={handleConfirm}
-                                    disabled={acting}
-                                    className={meta?.destructive ? "bg-red-600 hover:bg-red-700" : ""}
-                                >
-                                    {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Working...</> : meta?.button ?? ""}
+                                <AlertDialogAction onClick={() => runAction(onDelete)} disabled={acting} className="bg-red-600 hover:bg-red-700">
+                                    {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Deleting...</> : "Delete"}
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
-                </>
+                </div>
             ) : (
-                <div className="w-8 shrink-0" />
+                <div className="w-16 shrink-0" />
             )}
         </div>
     )
