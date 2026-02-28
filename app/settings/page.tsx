@@ -14,6 +14,7 @@ import { WorkflowEditor } from "@/components/workflow-editor"
 import { SequenceManager } from "@/components/sequence-editor"
 import { ProfileTab } from "@/components/profile-tab"
 import { ReviewTemplatesTab } from "@/components/review-templates-tab"
+import { FieldTemplatesTab } from "@/components/field-templates-tab"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
@@ -852,6 +853,7 @@ export default function SettingsPage() {
             <TabsTrigger value="framework">Framework</TabsTrigger>
             <TabsTrigger value="kb-config">KB Config</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="prep-templates">Prep Templates</TabsTrigger>
             <TabsTrigger value="lead-form">Lead Form</TabsTrigger>
           </TabsList>
 
@@ -885,6 +887,10 @@ export default function SettingsPage() {
 
           <TabsContent value="templates">
             <ReviewTemplatesTab />
+          </TabsContent>
+
+          <TabsContent value="prep-templates">
+            <FieldTemplatesTab />
           </TabsContent>
 
           <TabsContent value="lead-form">

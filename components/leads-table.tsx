@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { Phone, Columns3 } from "lucide-react"
 import {
   Table,
@@ -23,6 +24,7 @@ import { getOutcomeBadgeColor, DEFAULT_STAGE } from "@/lib/store"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TagBadges } from "@/components/tag-manager"
 import { useSegmentMap, resolveSegmentName } from "@/hooks/segment-helpers"
+import type { EnrollmentSummary } from "@/hooks/use-enrollment-summary"
 
 const getOutcomeColor = (outcome: AttemptOutcome) => getOutcomeBadgeColor(outcome)
 
@@ -63,6 +65,7 @@ const BUILT_IN_COLUMNS: ColumnDef[] = [
   { key: "last_outcome", label: "Last Outcome", builtIn: true },
   { key: "next_action", label: "Next Action", builtIn: true },
   { key: "tags", label: "Tags", builtIn: true },
+  { key: "sequence_progress", label: "Sequence", builtIn: true },
 ]
 
 const ALL_BUILT_IN_KEYS = BUILT_IN_COLUMNS.map(c => c.key)
@@ -85,6 +88,8 @@ interface LeadsTableProps {
   // View schema integration
   tableColumns?: string[]
   onTableColumnsChange?: (columns: string[]) => void
+  // Enrollment data for sequence progress column
+  enrollmentMap?: Map<string, EnrollmentSummary>
 }
 
 function getStageColor(stageName: string, stages: PipelineStage[]): string {
@@ -180,6 +185,7 @@ export function LeadsTable({
   onSelectionChange,
   tableColumns,
   onTableColumnsChange,
+  enrollmentMap,
 }: LeadsTableProps) {
   const hasSelection = selectedIds !== undefined && onSelectionChange !== undefined
   const { segmentMap } = useSegmentMap()
@@ -315,6 +321,41 @@ export function LeadsTable({
             )}
           </TableCell>
         )
+      case "sequence_progress": {
+        const summary = enrollmentMap?.get(lead.id)
+        if (!summary) {
+          return (
+            <TableCell key={colKey}>
+              <span className="text-muted-foreground text-sm">—</span>
+            </TableCell>
+          )
+        }
+        if (summary.status === "completed") {
+          return (
+            <TableCell key={colKey}>
+              <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                ✓ {summary.sequenceName}
+              </Badge>
+            </TableCell>
+          )
+        }
+        const progressVal = summary.totalSteps > 0
+          ? Math.round((summary.currentStep / summary.totalSteps) * 100)
+          : 0
+        return (
+          <TableCell key={colKey}>
+            <div className="min-w-[120px] space-y-1">
+              <span className="text-xs font-medium truncate block">{summary.sequenceName}</span>
+              <div className="flex items-center gap-2">
+                <Progress value={progressVal} className="h-1.5 flex-1" />
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {summary.currentStep}/{summary.totalSteps}
+                </span>
+              </div>
+            </div>
+          </TableCell>
+        )
+      }
       default: {
         // Custom field column
         const val = lead.customFields?.[colKey]

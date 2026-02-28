@@ -76,6 +76,7 @@ import { AccountRealityWidget } from "@/components/widgets/account-reality"
 import { PendingTasksWidget } from "@/components/widgets/pending-tasks"
 import { ContactsListWidget } from "@/components/widgets/contacts-list"
 import { LastAttemptWidget } from "@/components/widgets/last-attempt"
+import { PrepTemplatesWidget } from "@/components/widgets/prep-templates"
 
 const TimelineWidget = (props: WidgetProps) => (
   <InteractionsTimeline
@@ -101,7 +102,8 @@ const drawerWidgets: WidgetRegistry = {
   last_attempt: LastAttemptWidget,
   interactions_timeline: TimelineWidget,
   calls_panel: CallsWidget,
-  sequence_widget: SequenceWidgetWrapper
+  sequence_widget: SequenceWidgetWrapper,
+  prep_templates: PrepTemplatesWidget,
 }
 
 function timeSince(timestamp: string): string {

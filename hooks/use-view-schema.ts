@@ -16,6 +16,13 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
                     width: 1,
                     sections: [
                         {
+                            id: "sec-prep",
+                            name: "Prep",
+                            items: [
+                                { id: "widget-prep-templates", type: "widget", widgetId: "prep_templates" }
+                            ]
+                        },
+                        {
                             id: "sec-strategy",
                             name: "Strategy & Reality",
                             items: [
@@ -82,7 +89,7 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
     if (viewType === "leads_table") {
         return {
             fields: fields.slice(0, 3).map(f => f.fieldKey),
-            tableColumns: ["company", "phone", "stage", "segment", "last_outcome", "next_action"]
+            tableColumns: ["company", "phone", "stage", "segment", "last_outcome", "next_action", "sequence_progress"]
         }
     }
 

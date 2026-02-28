@@ -11,6 +11,7 @@ import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useTasks } from "@/hooks/use-tasks"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { useTags, useAllLeadTags } from "@/hooks/use-tags"
+import { useEnrollmentSummary } from "@/hooks/use-enrollment-summary"
 import { LeadsTable, deriveLeadFields, type LeadWithDerived } from "@/components/leads-table"
 import { useViewSchema } from "@/hooks/use-view-schema"
 import { KanbanBoard } from "@/components/kanban-board"
@@ -60,6 +61,7 @@ export default function LeadsPage() {
   const { tasks, completeTask } = useTasks()
   const { fields: fieldDefinitions } = useFieldDefinitions("lead")
   const { tags } = useTags()
+  const { enrollmentMap } = useEnrollmentSummary()
   const { leadTagsMap } = useAllLeadTags()
   const { presets, savePreset, deletePreset } = useViewPresets("lead")
   const { segments, segmentMap } = useSegmentMap()
@@ -330,6 +332,7 @@ export default function LeadsPage() {
             onSelectionChange={setSelectedIds}
             tableColumns={tableColumns}
             onTableColumnsChange={handleTableColumnsChange}
+            enrollmentMap={enrollmentMap}
           />
         ) : (
           <KanbanBoard

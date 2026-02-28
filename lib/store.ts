@@ -633,6 +633,21 @@ export interface Workflow {
 }
 
 // ============================================================================
+// FIELD TEMPLATES
+// ============================================================================
+
+export interface FieldTemplate {
+  id: string
+  projectId: string
+  name: string
+  description?: string
+  icon: string
+  fieldKeys: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================================================
 // SEQUENCES
 // ============================================================================
 
