@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useFieldTemplates } from "@/hooks/use-field-templates"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
 import { useToast } from "@/hooks/use-toast"
@@ -91,13 +91,15 @@ function TemplateBuilder({ open, onOpenChange, template, allFields, onSave }: Te
     const [selectedKeys, setSelectedKeys] = useState<string[]>(template?.fieldKeys || [])
     const [draggedIdx, setDraggedIdx] = useState<number | null>(null)
 
-    // Reset state when template changes
-    useState(() => {
-        setName(template?.name || "")
-        setDescription(template?.description || "")
-        setIcon(template?.icon || "clipboard-list")
-        setSelectedKeys(template?.fieldKeys || [])
-    })
+    // Sync state when template changes (open dialog or switch template)
+    useEffect(() => {
+        if (open) {
+            setName(template?.name || "")
+            setDescription(template?.description || "")
+            setIcon(template?.icon || "clipboard-list")
+            setSelectedKeys(template?.fieldKeys || [])
+        }
+    }, [open, template])
 
     const availableFields = allFields.filter((f) => !selectedKeys.includes(f.fieldKey))
     const selectedFields = selectedKeys
@@ -180,8 +182,8 @@ function TemplateBuilder({ open, onOpenChange, template, allFields, onSave }: Te
                                     key={item.key}
                                     onClick={() => setIcon(item.key)}
                                     className={`p-2 rounded-md border transition-colors ${icon === item.key
-                                            ? "border-primary bg-primary/10"
-                                            : "border-transparent hover:bg-muted"
+                                        ? "border-primary bg-primary/10"
+                                        : "border-transparent hover:bg-muted"
                                         }`}
                                     title={item.label}
                                 >
