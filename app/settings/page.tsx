@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { FieldEditor } from "@/components/field-editor"
+import { LeadFormTab } from "@/components/lead-form-tab"
 import { PipelineEditor } from "@/components/pipeline-editor"
 import { LeadImport } from "@/components/lead-import"
 import { TagManager } from "@/components/tag-manager"
@@ -852,6 +853,7 @@ export default function SettingsPage() {
             <TabsTrigger value="framework">Framework</TabsTrigger>
             <TabsTrigger value="kb-config">KB Config</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="lead-form">Lead Form</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
@@ -884,6 +886,10 @@ export default function SettingsPage() {
 
           <TabsContent value="templates">
             <ReviewTemplatesTab />
+          </TabsContent>
+
+          <TabsContent value="lead-form">
+            <LeadFormTab />
           </TabsContent>
         </Tabs>
       </div>

@@ -30,6 +30,7 @@ interface CreateFieldInput {
   fieldType: FieldType
   options?: string[]
   isRequired?: boolean
+  section?: string
 }
 
 export function useFieldDefinitions(entityType = "lead") {
