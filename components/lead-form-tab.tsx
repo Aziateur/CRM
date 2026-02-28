@@ -372,19 +372,19 @@ function FieldRow({ field, onToggleMask, onSectionChange, onAction }: FieldRowPr
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-52">
                         {!field.isPromoted && (
-                            <DropdownMenuItem onClick={() => onAction("promote")}>
+                            <DropdownMenuItem onSelect={() => setTimeout(() => onAction("promote"), 0)}>
                                 <ArrowUpCircle className="h-4 w-4 mr-2" />
                                 Promote to Column
                             </DropdownMenuItem>
                         )}
                         {field.isPromoted && (
-                            <DropdownMenuItem onClick={() => onAction("demote")}>
+                            <DropdownMenuItem onSelect={() => setTimeout(() => onAction("demote"), 0)}>
                                 <ArrowDownCircle className="h-4 w-4 mr-2" />
                                 Demote to Custom
                             </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
-                            onClick={() => onAction("delete")}
+                            onSelect={() => setTimeout(() => onAction("delete"), 0)}
                             className="text-red-600 focus:text-red-600"
                         >
                             <Trash2 className="h-4 w-4 mr-2" />
