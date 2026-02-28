@@ -291,6 +291,12 @@ function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, o
             {/* Drag handle placeholder */}
             <GripVertical className="h-4 w-4 text-muted-foreground/40 shrink-0" />
 
+            {/* Visibility toggle */}
+            <Switch
+                checked={!field.isMasked}
+                onCheckedChange={(checked) => onToggleMask(!checked)}
+                className="shrink-0"
+            />
 
             {/* Label */}
             <div className="flex items-center gap-2 flex-1 min-w-0">
