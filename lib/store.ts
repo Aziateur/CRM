@@ -210,6 +210,47 @@ export interface FieldDefinition {
 }
 
 // ============================================================================
+// VIEW SCHEMAS (Layout Builder)
+// ============================================================================
+
+export type ViewType = "lead_drawer" | "leads_table" | "add_lead"
+
+export interface ViewItem {
+  id: string // A unique ID for drag-and-drop
+  type: "field" | "widget"
+  fieldKey?: string // Only if type === "field"
+  widgetId?: string // Only if type === "widget"
+}
+
+export interface ViewSection {
+  id: string
+  name: string
+  items: ViewItem[]
+}
+
+export interface ViewColumn {
+  id: string
+  width?: number // e.g., 1 for 1fr, 2 for 2fr (grid spans)
+  sections: ViewSection[]
+}
+
+export interface ViewSchemaData {
+  // For lead_drawer: divided into columns
+  columns?: ViewColumn[]
+  // For leads_table / add_lead: single list of visible fields/columns
+  fields?: string[] // array of fieldKeys
+}
+
+export interface ViewSchema {
+  id: string
+  projectId: string
+  viewType: ViewType
+  schema: ViewSchemaData
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================================================
 // INTERFACES
 // ============================================================================
 

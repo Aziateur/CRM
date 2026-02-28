@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { Topbar } from "@/components/topbar"
 import { FieldEditor } from "@/components/field-editor"
-import { LeadFormTab } from "@/components/lead-form-tab"
+import { LayoutBuilder } from "@/components/layout-builder"
 import { PipelineEditor } from "@/components/pipeline-editor"
 import { LeadImport } from "@/components/lead-import"
 import { TagManager } from "@/components/tag-manager"
@@ -888,7 +888,7 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="lead-form">
-            <LeadFormTab />
+            <LayoutBuilder />
           </TabsContent>
         </Tabs>
       </div>
