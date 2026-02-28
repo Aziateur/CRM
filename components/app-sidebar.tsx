@@ -13,6 +13,7 @@ import {
   LogOut,
   User2,
   AlertTriangle,
+  Briefcase,
 } from "lucide-react"
 
 import {
@@ -64,6 +65,11 @@ export function AppSidebar() {
       title: "Review",
       url: "/batch-review",
       icon: Repeat,
+    },
+    {
+      title: "Work Center",
+      url: "/work-center",
+      icon: Briefcase,
     },
     {
       title: "Knowledge Base",
