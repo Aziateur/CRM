@@ -173,13 +173,35 @@ export function LayoutBuilder() {
                     const overColIdx = overData.colIdx
                     const overSecIdx = overData.secIdx
 
-                    // Assuming we only reorder within the same column for now
-                    if (activeColIdx === overColIdx && activeColIdx !== undefined) {
-                        next.columns![activeColIdx].sections = arrayMove(
-                            next.columns![activeColIdx].sections,
-                            activeSecIdx,
-                            overSecIdx
-                        )
+                    if (activeColIdx !== undefined && overColIdx !== undefined) {
+                        if (activeColIdx === overColIdx) {
+                            next.columns![activeColIdx].sections = arrayMove(
+                                next.columns![activeColIdx].sections,
+                                activeSecIdx,
+                                overSecIdx
+                            )
+                        } else {
+                            const sectionToMove = next.columns![activeColIdx].sections[activeSecIdx]
+                            next.columns![activeColIdx].sections.splice(activeSecIdx, 1)
+                            next.columns![overColIdx].sections.splice(overSecIdx, 0, sectionToMove)
+                        }
+                        return next
+                    }
+                    return prev
+                })
+            } else if (overData?.type === "column") {
+                // Dropping section into an empty column
+                setLocalSchema(prev => {
+                    if (!prev || !prev.columns) return prev
+                    const next = cloneSchema(prev)
+                    const activeColIdx = activeData.colIdx
+                    const activeSecIdx = activeData.secIdx
+                    const overColIdx = overData.colIdx
+
+                    if (activeColIdx !== undefined && overColIdx !== undefined && activeColIdx !== overColIdx) {
+                        const sectionToMove = next.columns![activeColIdx].sections[activeSecIdx]
+                        next.columns![activeColIdx].sections.splice(activeSecIdx, 1)
+                        next.columns![overColIdx].sections.push(sectionToMove) // add to end of empty column
                         return next
                     }
                     return prev
@@ -300,6 +322,37 @@ export function LayoutBuilder() {
     }
 
     // --- ACTIONS ---
+    const handleAddColumn = () => {
+        setLocalSchema(prev => {
+            if (!prev || !prev.columns) return prev
+            const next = cloneSchema(prev)
+            next.columns!.push({
+                id: `col-${generateId()}`,
+                sections: []
+            })
+            return next
+        })
+    }
+
+    const handleRemoveColumn = (colIdx: number) => {
+        setLocalSchema(prev => {
+            if (!prev || !prev.columns) return prev
+            const next = cloneSchema(prev)
+            next.columns!.splice(colIdx, 1)
+            return next
+        })
+    }
+
+    const getGridColsClass = (count: number) => {
+        switch (count) {
+            case 1: return "lg:grid-cols-1"
+            case 2: return "lg:grid-cols-2"
+            case 3: return "lg:grid-cols-3"
+            case 4: return "lg:grid-cols-4"
+            default: return "lg:grid-cols-4"
+        }
+    }
+
     const handleAddSection = (colIdx: number) => {
         setLocalSchema(prev => {
             if (!prev || !prev.columns) return prev
@@ -376,18 +429,25 @@ export function LayoutBuilder() {
                     </div>
 
                     {/* LAYOUT COLS */}
-                    <div className="col-span-1 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className={`col-span-1 lg:col-span-3 grid grid-cols-1 ${getGridColsClass(localSchema.columns.length + (localSchema.columns.length < 4 ? 1 : 0))} gap-6`}>
                         {localSchema.columns.map((col, colIdx) => (
                             <div key={col.id} className="space-y-4">
-                                <div className="font-semibold text-muted-foreground uppercase text-xs tracking-wider flex items-center justify-between">
-                                    Column {colIdx + 1}
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(colIdx)}>
-                                        <Plus className="h-4 w-4" />
-                                    </Button>
+                                <div className="font-semibold text-muted-foreground uppercase text-xs tracking-wider flex items-center justify-between group/colheader">
+                                    <span>Column {colIdx + 1}</span>
+                                    <div className="flex gap-1">
+                                        {col.sections.length === 0 && (
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover/colheader:opacity-100 transition-opacity" onClick={() => handleRemoveColumn(colIdx)}>
+                                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                            </Button>
+                                        )}
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(colIdx)}>
+                                            <Plus className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
 
-                                <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                                    <div className="space-y-4 min-h-[50px]">
+                                <DroppableColumn col={col} colIdx={colIdx}>
+                                    <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
                                         {col.sections.map((section, secIdx) => (
                                             <DroppableSectionContainer
                                                 key={section.id}
@@ -400,10 +460,20 @@ export function LayoutBuilder() {
                                                 onRemoveItem={handleRemoveItem}
                                             />
                                         ))}
-                                    </div>
-                                </SortableContext>
+                                    </SortableContext>
+                                </DroppableColumn>
                             </div>
                         ))}
+
+                        {localSchema.columns.length < 4 && (
+                            <div
+                                className="border-2 border-dashed border-muted bg-muted/20 hover:bg-muted/50 transition-colors rounded-lg flex flex-col items-center justify-center min-h-[150px] cursor-pointer text-muted-foreground hover:text-foreground"
+                                onClick={handleAddColumn}
+                            >
+                                <Plus className="h-8 w-8 mb-2 opacity-50" />
+                                <span className="text-sm font-medium">Add Column</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -423,6 +493,20 @@ export function LayoutBuilder() {
 }
 
 // --- SUB-COMPONENTS ---
+
+function DroppableColumn({ col, colIdx, children }: { col: import("@/lib/store").ViewColumn, colIdx: number, children: React.ReactNode }) {
+    const { setNodeRef } = useDroppable({
+        id: `col-${col.id}`,
+        data: { type: "column", colIdx }
+    })
+    return (
+        <div ref={setNodeRef} className="space-y-4 min-h-[100px] pb-8 rounded-lg border border-transparent transition-colors data-[is-over=true]:border-dashed data-[is-over=true]:border-primary/50 data-[is-over=true]:bg-primary/5">
+            {children}
+        </div>
+    )
+}
+
+
 
 function DroppablePaletteContainer({ items, fieldDefs }: { items: ViewItem[], fieldDefs: FieldDefinition[] }) {
     const { setNodeRef } = useDroppable({ id: "palette-zone" })
