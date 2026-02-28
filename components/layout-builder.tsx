@@ -429,51 +429,53 @@ export function LayoutBuilder() {
                     </div>
 
                     {/* LAYOUT COLS */}
-                    <div className={`col-span-1 lg:col-span-3 grid grid-cols-1 ${getGridColsClass(localSchema.columns.length + (localSchema.columns.length < 4 ? 1 : 0))} gap-6`}>
-                        {localSchema.columns.map((col, colIdx) => (
-                            <div key={col.id} className="space-y-4">
-                                <div className="font-semibold text-muted-foreground uppercase text-xs tracking-wider flex items-center justify-between group/colheader">
-                                    <span>Column {colIdx + 1}</span>
-                                    <div className="flex gap-1">
-                                        {col.sections.length === 0 && (
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover/colheader:opacity-100 transition-opacity" onClick={() => handleRemoveColumn(colIdx)}>
-                                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                    <div className="col-span-1 lg:col-span-3 overflow-x-auto">
+                        <div className="flex gap-6" style={{ minWidth: `${(localSchema.columns.length + (localSchema.columns.length < 4 ? 1 : 0)) * 260}px` }}>
+                            {localSchema.columns.map((col, colIdx) => (
+                                <div key={col.id} className="flex-1 min-w-[240px] space-y-4">
+                                    <div className="font-semibold text-muted-foreground uppercase text-xs tracking-wider flex items-center justify-between group/colheader">
+                                        <span>Column {colIdx + 1}</span>
+                                        <div className="flex gap-1">
+                                            {col.sections.length === 0 && (
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover/colheader:opacity-100 transition-opacity" onClick={() => handleRemoveColumn(colIdx)}>
+                                                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                                </Button>
+                                            )}
+                                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(colIdx)}>
+                                                <Plus className="h-4 w-4" />
                                             </Button>
-                                        )}
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(colIdx)}>
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
+                                        </div>
                                     </div>
+
+                                    <DroppableColumn col={col} colIdx={colIdx}>
+                                        <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                                            {col.sections.map((section, secIdx) => (
+                                                <DroppableSectionContainer
+                                                    key={section.id}
+                                                    section={section}
+                                                    fieldDefs={fieldDefinitions}
+                                                    colIdx={colIdx}
+                                                    secIdx={secIdx}
+                                                    onRemoveSection={handleRemoveSection}
+                                                    onRenameSection={handleRenameSection}
+                                                    onRemoveItem={handleRemoveItem}
+                                                />
+                                            ))}
+                                        </SortableContext>
+                                    </DroppableColumn>
                                 </div>
+                            ))}
 
-                                <DroppableColumn col={col} colIdx={colIdx}>
-                                    <SortableContext items={col.sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                                        {col.sections.map((section, secIdx) => (
-                                            <DroppableSectionContainer
-                                                key={section.id}
-                                                section={section}
-                                                fieldDefs={fieldDefinitions}
-                                                colIdx={colIdx}
-                                                secIdx={secIdx}
-                                                onRemoveSection={handleRemoveSection}
-                                                onRenameSection={handleRenameSection}
-                                                onRemoveItem={handleRemoveItem}
-                                            />
-                                        ))}
-                                    </SortableContext>
-                                </DroppableColumn>
-                            </div>
-                        ))}
-
-                        {localSchema.columns.length < 4 && (
-                            <div
-                                className="border-2 border-dashed border-muted bg-muted/20 hover:bg-muted/50 transition-colors rounded-lg flex flex-col items-center justify-center min-h-[150px] cursor-pointer text-muted-foreground hover:text-foreground"
-                                onClick={handleAddColumn}
-                            >
-                                <Plus className="h-8 w-8 mb-2 opacity-50" />
-                                <span className="text-sm font-medium">Add Column</span>
-                            </div>
-                        )}
+                            {localSchema.columns.length < 4 && (
+                                <div
+                                    className="flex-shrink-0 min-w-[180px] border-2 border-dashed border-muted bg-muted/20 hover:bg-muted/50 transition-colors rounded-lg flex flex-col items-center justify-center min-h-[150px] cursor-pointer text-muted-foreground hover:text-foreground"
+                                    onClick={handleAddColumn}
+                                >
+                                    <Plus className="h-8 w-8 mb-2 opacity-50" />
+                                    <span className="text-sm font-medium">Add Column</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -647,8 +649,8 @@ function SortableItemRow({ item, fieldDefs, isPaletteItem, onRemove }: { item: V
                 <GripVertical className="h-4 w-4" />
             </button>
 
-            <div className="flex-1 flex items-center justify-between overflow-hidden">
-                <span className="text-sm font-medium truncate">{title}</span>
+            <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
+                <span className="text-sm font-medium">{title}</span>
                 {isWidget && (
                     <Badge variant="secondary" className="text-[10px] uppercase opacity-70">
                         Widget
