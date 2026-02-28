@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
     Select,
     SelectContent,
@@ -19,6 +21,14 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -38,12 +48,28 @@ import {
     Trash2,
     GripVertical,
     Loader2,
+    Plus,
 } from "lucide-react"
-import type { FieldDefinition, FieldSection } from "@/lib/store"
+import type { FieldDefinition, FieldSection, FieldType } from "@/lib/store"
+
+const FIELD_TYPES: { key: FieldType; label: string; icon: string }[] = [
+    { key: "text", label: "Text", icon: "Aa" },
+    { key: "number", label: "Number", icon: "#" },
+    { key: "select", label: "Dropdown", icon: "▾" },
+    { key: "multi_select", label: "Multi-select", icon: "▾▾" },
+    { key: "date", label: "Date", icon: "📅" },
+    { key: "boolean", label: "Yes / No", icon: "✓" },
+    { key: "url", label: "URL", icon: "🔗" },
+    { key: "email", label: "Email", icon: "@" },
+]
 
 const SECTION_META: Record<string, { label: string; description: string }> = {
     core: { label: "Contact Info", description: "Essential contact fields shown at the top of the lead form" },
     detail: { label: "Details", description: "Additional information fields shown below contact info" },
+}
+
+function slugify(label: string): string {
+    return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
 }
 
 export function LeadFormTab() {
@@ -55,10 +81,16 @@ export function LeadFormTab() {
         demoteField,
         deleteField,
         updateField,
+        createField,
     } = useFieldDefinitions("lead")
 
     const [actionTarget, setActionTarget] = useState<{ field: FieldDefinition; action: "promote" | "demote" | "delete" } | null>(null)
     const [acting, setActing] = useState(false)
+    const [showAddField, setShowAddField] = useState(false)
+    const [newFieldLabel, setNewFieldLabel] = useState("")
+    const [newFieldType, setNewFieldType] = useState<FieldType>("text")
+    const [newFieldSection, setNewFieldSection] = useState<FieldSection>("detail")
+    const [addingField, setAddingField] = useState(false)
 
     const handleAction = async () => {
         if (!actionTarget) return
@@ -77,10 +109,28 @@ export function LeadFormTab() {
         }
     }
 
+    const handleAddField = async () => {
+        if (!newFieldLabel.trim()) return
+        setAddingField(true)
+        const result = await createField({
+            fieldKey: slugify(newFieldLabel),
+            fieldLabel: newFieldLabel.trim(),
+            fieldType: newFieldType,
+            section: newFieldSection,
+        })
+        if (result) {
+            setShowAddField(false)
+            setNewFieldLabel("")
+            setNewFieldType("text")
+            setNewFieldSection("detail")
+        }
+        setAddingField(false)
+    }
+
     const actionLabels = {
-        promote: { title: "Promote to Column", description: "This will create a real database column for this field. Data will be migrated from JSONB. The field will become non-maskable (always visible).", button: "Promote", variant: "default" as const },
-        demote: { title: "Demote to Custom Field", description: "This will move this field back to JSONB storage. The database column will be kept as a ghost column for safety. The field will become maskable.", button: "Demote", variant: "destructive" as const },
-        delete: { title: "Delete Field", description: "This will remove the field definition. Existing data in leads won't be deleted but will no longer be accessible through the form.", button: "Delete", variant: "destructive" as const },
+        promote: { title: "Promote to Column", description: "This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).", button: "Promote", variant: "default" as const },
+        demote: { title: "Demote to Custom Field", description: "This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.", button: "Demote", variant: "destructive" as const },
+        delete: { title: "Delete Field", description: "This will remove the field definition. Existing data in leads won't be deleted but will no longer be accessible.", button: "Delete", variant: "destructive" as const },
     }
 
     if (loading) {
@@ -95,12 +145,17 @@ export function LeadFormTab() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-lg font-semibold">Lead Form Layout</h2>
-                <p className="text-sm text-muted-foreground">
-                    Control which fields appear on the lead form, their section, and their status.
-                    Changes apply to all leads in this project.
-                </p>
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-lg font-semibold">Lead Form Layout</h2>
+                    <p className="text-sm text-muted-foreground">
+                        Control which fields appear on the lead form, their section, and their status.
+                    </p>
+                </div>
+                <Button onClick={() => setShowAddField(true)} size="sm">
+                    <Plus className="h-4 w-4 mr-1" /> Add Field
+                </Button>
             </div>
 
             {/* Legend */}
@@ -119,15 +174,26 @@ export function LeadFormTab() {
                 </div>
             </div>
 
+            {/* Section cards */}
             {sections.map((section) => {
                 const sectionFields = fields.filter((f) => f.section === section).sort((a, b) => a.position - b.position)
                 const meta = SECTION_META[section]
+                const hiddenCount = sectionFields.filter((f) => f.isMasked).length
 
                 return (
                     <Card key={section}>
                         <CardHeader>
-                            <CardTitle className="text-base">{meta?.label ?? section}</CardTitle>
-                            <CardDescription>{meta?.description}</CardDescription>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="text-base">{meta?.label ?? section}</CardTitle>
+                                    <CardDescription>{meta?.description}</CardDescription>
+                                </div>
+                                {hiddenCount > 0 && (
+                                    <Badge variant="outline" className="text-xs">
+                                        <EyeOff className="h-3 w-3 mr-1" />{hiddenCount} hidden
+                                    </Badge>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent>
                             {sectionFields.length === 0 ? (
@@ -150,40 +216,75 @@ export function LeadFormTab() {
                 )
             })}
 
-            {/* Unassigned fields (no section) */}
-            {(() => {
-                const unassigned = fields.filter((f) => !f.section || !sections.includes(f.section))
-                if (unassigned.length === 0) return null
-                return (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base">Unassigned</CardTitle>
-                            <CardDescription>Fields not assigned to any section — they won&apos;t appear on the lead form until assigned.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="divide-y">
-                                {unassigned.map((field) => (
-                                    <FieldRow
-                                        key={field.id}
-                                        field={field}
-                                        onToggleMask={(masked) => toggleMask(field.id, masked)}
-                                        onSectionChange={(s) => updateField(field.id, { section: s })}
-                                        onAction={(action) => setActionTarget({ field, action })}
-                                    />
-                                ))}
+            {/* Add Field Dialog */}
+            <Dialog open={showAddField} onOpenChange={setShowAddField}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add New Field</DialogTitle>
+                        <DialogDescription>
+                            Create a new custom field for your leads.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label>Field Name</Label>
+                            <Input
+                                placeholder="e.g. Revenue, Industry, Priority..."
+                                value={newFieldLabel}
+                                onChange={(e) => setNewFieldLabel(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") handleAddField() }}
+                            />
+                            {newFieldLabel.trim() && (
+                                <p className="text-xs text-muted-foreground">
+                                    Key: <code className="bg-muted px-1 rounded">{slugify(newFieldLabel)}</code>
+                                </p>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Type</Label>
+                                <Select value={newFieldType} onValueChange={(v) => setNewFieldType(v as FieldType)}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {FIELD_TYPES.map((ft) => (
+                                            <SelectItem key={ft.key} value={ft.key}>
+                                                <span className="mr-2">{ft.icon}</span> {ft.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                        </CardContent>
-                    </Card>
-                )
-            })()}
+                            <div className="space-y-2">
+                                <Label>Section</Label>
+                                <Select value={newFieldSection} onValueChange={(v) => setNewFieldSection(v as FieldSection)}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="core">Contact Info</SelectItem>
+                                        <SelectItem value="detail">Details</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowAddField(false)} disabled={addingField}>Cancel</Button>
+                        <Button onClick={handleAddField} disabled={addingField || !newFieldLabel.trim()}>
+                            {addingField ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Adding...</> : <><Plus className="h-4 w-4 mr-1" /> Add Field</>}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-            {/* Confirmation Dialog */}
+            {/* Action Confirmation Dialog */}
             <AlertDialog open={!!actionTarget} onOpenChange={(o) => { if (!o) setActionTarget(null) }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>
-                            {actionTarget ? actionLabels[actionTarget.action].title : ""}
-                            {actionTarget ? ` — "${actionTarget.field.fieldLabel}"` : ""}
+                            {actionTarget ? `${actionLabels[actionTarget.action].title} — "${actionTarget.field.fieldLabel}"` : ""}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             {actionTarget ? actionLabels[actionTarget.action].description : ""}

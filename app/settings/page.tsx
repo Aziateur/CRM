@@ -60,7 +60,6 @@ function PipelineTab() {
   return (
     <div className="space-y-10">
       <PipelineEditor />
-      <FieldEditor />
       <TagManager />
     </div>
   )

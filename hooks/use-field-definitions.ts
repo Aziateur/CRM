@@ -91,6 +91,7 @@ export function useFieldDefinitions(entityType = "lead") {
           is_required: input.isRequired ?? false,
           position: nextPosition,
           project_id: projectId,
+          section: input.section ?? "detail",
         }])
         .select()
         .single()
@@ -119,6 +120,9 @@ export function useFieldDefinitions(entityType = "lead") {
       if (changes.fieldType !== undefined) payload.field_type = changes.fieldType
       if (changes.options !== undefined) payload.options = changes.options
       if (changes.isRequired !== undefined) payload.is_required = changes.isRequired
+      if (changes.section !== undefined) payload.section = changes.section
+
+      if (Object.keys(payload).length === 0) return
 
       const { error } = await supabase
         .from("field_definitions")
@@ -139,6 +143,7 @@ export function useFieldDefinitions(entityType = "lead") {
               ...(changes.fieldType !== undefined && { fieldType: changes.fieldType }),
               ...(changes.options !== undefined && { options: changes.options }),
               ...(changes.isRequired !== undefined && { isRequired: changes.isRequired }),
+              ...(changes.section !== undefined && { section: changes.section as FieldSection }),
             }
             : f
         )

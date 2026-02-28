@@ -45,8 +45,6 @@ function slugify(label: string): string {
 
 const ENTITY_TYPES = [
   { key: "lead", label: "Leads" },
-  { key: "contact", label: "Contacts" },
-  { key: "opportunity", label: "Opportunities" },
 ]
 
 // --- Proper options list manager ---
