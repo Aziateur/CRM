@@ -7,6 +7,26 @@ import { useProjectId } from "@/hooks/use-project-id"
 import type { Lead, Contact } from "@/lib/store"
 
 export function mapLeadRow(l: Record<string, unknown>): Lead {
+  // Collect explicitly-mapped DB keys so we can pass through extras (promoted columns)
+  const mappedDbKeys = new Set([
+    "id", "company", "phone", "segment", "is_decision_maker", "isDecisionMaker",
+    "is_fleet_owner", "isFleetOwner", "confirmed_facts", "confirmedFacts",
+    "open_questions", "openQuestions", "next_call_objective", "nextCallObjective",
+    "operational_context", "operationalContext", "constraints", "constraint_other",
+    "constraintOther", "opportunity_angle", "opportunityAngle", "website", "email",
+    "address", "lead_source", "leadSource", "stage", "stage_changed_at", "stageChangedAt",
+    "deal_value", "dealValue", "close_probability", "closeProbability",
+    "custom_fields", "customFields", "contacts", "created_at", "createdAt", "project_id",
+  ])
+
+  // Gather extra columns (promoted fields like full_name, last_name, mobile_number, etc.)
+  const extras: Record<string, unknown> = {}
+  for (const key of Object.keys(l)) {
+    if (!mappedDbKeys.has(key)) {
+      extras[key] = l[key]
+    }
+  }
+
   return {
     id: l.id as string,
     company: l.company as string,
@@ -40,6 +60,8 @@ export function mapLeadRow(l: Record<string, unknown>): Lead {
       email: c.email as string | undefined,
     })),
     createdAt: (l.created_at || l.createdAt || new Date().toISOString()) as string,
+    // Pass through promoted columns (full_name, last_name, mobile_number, etc.)
+    ...extras,
   }
 }
 

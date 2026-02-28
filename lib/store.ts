@@ -263,6 +263,8 @@ export interface Lead {
   // Contacts
   contacts: Contact[]
   createdAt: string
+  // Allow promoted columns (dynamic keys from field_definitions)
+  [key: string]: unknown
 }
 
 export interface Attempt {
