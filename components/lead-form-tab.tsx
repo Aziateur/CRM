@@ -84,30 +84,11 @@ export function LeadFormTab() {
         createField,
     } = useFieldDefinitions("lead")
 
-    const [actionTarget, setActionTarget] = useState<{ field: FieldDefinition; action: "promote" | "demote" | "delete" } | null>(null)
-    const [acting, setActing] = useState(false)
     const [showAddField, setShowAddField] = useState(false)
     const [newFieldLabel, setNewFieldLabel] = useState("")
     const [newFieldType, setNewFieldType] = useState<FieldType>("text")
     const [newFieldSection, setNewFieldSection] = useState<FieldSection>("detail")
     const [addingField, setAddingField] = useState(false)
-
-    const handleAction = async () => {
-        if (!actionTarget) return
-        setActing(true)
-        try {
-            if (actionTarget.action === "promote") {
-                await promoteField(actionTarget.field.id)
-            } else if (actionTarget.action === "demote") {
-                await demoteField(actionTarget.field.id)
-            } else if (actionTarget.action === "delete") {
-                await deleteField(actionTarget.field.id)
-            }
-        } finally {
-            setActing(false)
-            setActionTarget(null)
-        }
-    }
 
     const handleAddField = async () => {
         if (!newFieldLabel.trim()) return
@@ -125,12 +106,6 @@ export function LeadFormTab() {
             setNewFieldSection("detail")
         }
         setAddingField(false)
-    }
-
-    const actionLabels = {
-        promote: { title: "Promote to Column", description: "This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).", button: "Promote", variant: "default" as const },
-        demote: { title: "Demote to Custom Field", description: "This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.", button: "Demote", variant: "destructive" as const },
-        delete: { title: "Delete Field", description: "This will remove the field definition. Existing data in leads won't be deleted but will no longer be accessible.", button: "Delete", variant: "destructive" as const },
     }
 
     if (loading) {
@@ -206,7 +181,9 @@ export function LeadFormTab() {
                                             field={field}
                                             onToggleMask={(masked) => toggleMask(field.id, masked)}
                                             onSectionChange={(s) => updateField(field.id, { section: s })}
-                                            onAction={(action) => setActionTarget({ field, action })}
+                                            onPromote={() => promoteField(field.id)}
+                                            onDemote={() => demoteField(field.id)}
+                                            onDelete={() => deleteField(field.id)}
                                         />
                                     ))}
                                 </div>
@@ -278,44 +255,51 @@ export function LeadFormTab() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* Action Confirmation Dialog */}
-            <AlertDialog open={!!actionTarget} onOpenChange={(o) => { if (!o) setActionTarget(null) }}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            {actionTarget ? `${actionLabels[actionTarget.action].title} — "${actionTarget.field.fieldLabel}"` : ""}
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                            {actionTarget ? actionLabels[actionTarget.action].description : ""}
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={handleAction}
-                            disabled={acting}
-                            className={actionTarget?.action !== "promote" ? "bg-red-600 hover:bg-red-700" : ""}
-                        >
-                            {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Working...</> : actionTarget ? actionLabels[actionTarget.action].button : ""}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     )
 }
 
-// ─── Individual field row ─────────────────────────────────────────────
+// ─── Action labels ────────────────────────────────────────────────────
+const ACTION_META = {
+    promote: { title: "Promote to Column", description: "This will create a real database column. Data migrates from JSONB. The field becomes non-maskable (always visible).", button: "Promote", destructive: false },
+    demote: { title: "Demote to Custom Field", description: "This will move this field back to JSONB storage. The database column is kept as a ghost column for safety. The field becomes maskable.", button: "Demote", destructive: true },
+    delete: { title: "Delete Field", description: "This will remove the field definition. Existing data in leads won't be deleted but will no longer be accessible.", button: "Delete", destructive: true },
+} as const
+
+// ─── Individual field row with SELF-CONTAINED dialogs ─────────────────
+// Each FieldRow manages its own AlertDialog. This eliminates the Radix
+// DropdownMenu ↔ AlertDialog cross-component focus trap conflict that
+// prevents the confirmation dialog from appearing when triggered from
+// a dropdown menu item in certain browsers/environments.
+// ───────────────────────────────────────────────────────────────────────
 interface FieldRowProps {
     field: FieldDefinition
     onToggleMask: (masked: boolean) => void
     onSectionChange: (section: FieldSection) => void
-    onAction: (action: "promote" | "demote" | "delete") => void
+    onPromote: () => Promise<unknown>
+    onDemote: () => Promise<unknown>
+    onDelete: () => Promise<unknown>
 }
 
-function FieldRow({ field, onToggleMask, onSectionChange, onAction }: FieldRowProps) {
+function FieldRow({ field, onToggleMask, onSectionChange, onPromote, onDemote, onDelete }: FieldRowProps) {
     const isNative = field.source === "native"
+    const [pendingAction, setPendingAction] = useState<"promote" | "demote" | "delete" | null>(null)
+    const [acting, setActing] = useState(false)
+
+    const handleConfirm = async () => {
+        if (!pendingAction) return
+        setActing(true)
+        try {
+            if (pendingAction === "promote") await onPromote()
+            else if (pendingAction === "demote") await onDemote()
+            else if (pendingAction === "delete") await onDelete()
+        } finally {
+            setActing(false)
+            setPendingAction(null)
+        }
+    }
+
+    const meta = pendingAction ? ACTION_META[pendingAction] : null
 
     return (
         <div className={`flex items-center gap-3 py-3 px-1 ${field.isMasked ? "opacity-50" : ""}`}>
@@ -362,36 +346,62 @@ function FieldRow({ field, onToggleMask, onSectionChange, onAction }: FieldRowPr
             {/* Type display */}
             <span className="text-xs text-muted-foreground w-16 text-right shrink-0 capitalize">{field.fieldType}</span>
 
-            {/* Actions */}
+            {/* Actions — DropdownMenu triggers local state, AlertDialog is co-located */}
             {!isNative ? (
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
-                            <MoreVertical className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                        {!field.isPromoted && (
-                            <DropdownMenuItem onSelect={() => setTimeout(() => onAction("promote"), 0)}>
-                                <ArrowUpCircle className="h-4 w-4 mr-2" />
-                                Promote to Column
+                <>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                            {!field.isPromoted && (
+                                <DropdownMenuItem onSelect={() => setTimeout(() => setPendingAction("promote"), 100)}>
+                                    <ArrowUpCircle className="h-4 w-4 mr-2" />
+                                    Promote to Column
+                                </DropdownMenuItem>
+                            )}
+                            {field.isPromoted && (
+                                <DropdownMenuItem onSelect={() => setTimeout(() => setPendingAction("demote"), 100)}>
+                                    <ArrowDownCircle className="h-4 w-4 mr-2" />
+                                    Demote to Custom
+                                </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                                onSelect={() => setTimeout(() => setPendingAction("delete"), 100)}
+                                className="text-red-600 focus:text-red-600"
+                            >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Field
                             </DropdownMenuItem>
-                        )}
-                        {field.isPromoted && (
-                            <DropdownMenuItem onSelect={() => setTimeout(() => onAction("demote"), 0)}>
-                                <ArrowDownCircle className="h-4 w-4 mr-2" />
-                                Demote to Custom
-                            </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                            onSelect={() => setTimeout(() => onAction("delete"), 0)}
-                            className="text-red-600 focus:text-red-600"
-                        >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Field
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* Self-contained confirmation dialog per row */}
+                    <AlertDialog open={!!pendingAction} onOpenChange={(open) => { if (!open) setPendingAction(null) }}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                    {meta ? `${meta.title} — "${field.fieldLabel}"` : ""}
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    {meta?.description ?? ""}
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={acting}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={handleConfirm}
+                                    disabled={acting}
+                                    className={meta?.destructive ? "bg-red-600 hover:bg-red-700" : ""}
+                                >
+                                    {acting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Working...</> : meta?.button ?? ""}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </>
             ) : (
                 <div className="w-8 shrink-0" />
             )}
