@@ -1,18 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useWorkflows } from "@/hooks/use-workflows"
+import { useSequences } from "@/hooks/use-sequences"
 import { describeWorkflow } from "@/lib/workflow-engine"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Trash2, Zap } from "lucide-react"
-import type { WorkflowTriggerType, WorkflowActionType } from "@/lib/store"
+import type { Workflow, WorkflowTriggerType, WorkflowActionType, Sequence } from "@/lib/store"
 
 const triggerLabels: Record<WorkflowTriggerType, string> = {
   stage_change: "Stage changes",
@@ -108,7 +108,7 @@ function TriggerConfigFields({ type, config, onChange }: { type: WorkflowTrigger
   }
 }
 
-function ActionConfigFields({ type, config, onChange }: { type: WorkflowActionType; config: Record<string, string>; onChange: (c: Record<string, string>) => void }) {
+function ActionConfigFields({ type, config, onChange, sequences }: { type: WorkflowActionType; config: Record<string, string>; onChange: (c: Record<string, string>) => void; sequences: Sequence[] }) {
   switch (type) {
     case "change_stage":
       return (
@@ -158,15 +158,120 @@ function ActionConfigFields({ type, config, onChange }: { type: WorkflowActionTy
           <Input value={config.message || ""} onChange={(e) => onChange({ ...config, message: e.target.value })} placeholder="Use {company}, {stage}" className="h-8" />
         </div>
       )
+    case "enroll_sequence":
+      return (
+        <div>
+          <Label className="text-xs">Sequence</Label>
+          <Select value={config.sequence_id || ""} onValueChange={(v) => onChange({ ...config, sequence_id: v })}>
+            <SelectTrigger className="h-8"><SelectValue placeholder="Select sequence..." /></SelectTrigger>
+            <SelectContent>
+              {sequences.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )
     default:
       return null
   }
 }
 
+// ─── Shared Workflow Dialog ──────────────────────────────────────────────────
+
+interface WorkflowDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  form: WorkflowForm
+  onFormChange: (form: WorkflowForm | ((prev: WorkflowForm) => WorkflowForm)) => void
+  sequences: Sequence[]
+  onSave: () => void
+  saveLabel: string
+}
+
+function WorkflowDialog({ open, onOpenChange, title, form, onFormChange, sequences, onSave, saveLabel }: WorkflowDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input value={form.name} onChange={(e) => onFormChange((f) => ({ ...f, name: e.target.value }))} placeholder="Auto-tag hot leads" />
+          </div>
+          <div className="space-y-2">
+            <Label>When (trigger)</Label>
+            <Select value={form.triggerType} onValueChange={(v) => onFormChange((f) => ({ ...f, triggerType: v as WorkflowTriggerType, triggerConfig: v === f.triggerType ? f.triggerConfig : {} }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(triggerLabels).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <TriggerConfigFields type={form.triggerType} config={form.triggerConfig} onChange={(c) => onFormChange((f) => ({ ...f, triggerConfig: c }))} />
+          </div>
+          <div className="space-y-2">
+            <Label>Then (action)</Label>
+            <Select value={form.actionType} onValueChange={(v) => onFormChange((f) => ({ ...f, actionType: v as WorkflowActionType, actionConfig: v === f.actionType ? f.actionConfig : {} }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(actionLabels).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ActionConfigFields type={form.actionType} config={form.actionConfig} onChange={(c) => onFormChange((f) => ({ ...f, actionConfig: c }))} sequences={sequences} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" className="bg-transparent" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={onSave} disabled={!form.name.trim()}>{saveLabel}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── WorkflowEditor ──────────────────────────────────────────────────────────
+
+function workflowToForm(w: Workflow): WorkflowForm {
+  const tc = (w.triggerConfig ?? {}) as Record<string, unknown>
+  const ac = (w.actionConfig ?? {}) as Record<string, unknown>
+  const triggerConfig: Record<string, string> = {}
+  const actionConfig: Record<string, string> = {}
+  for (const [k, v] of Object.entries(tc)) triggerConfig[k] = String(v ?? "")
+  for (const [k, v] of Object.entries(ac)) actionConfig[k] = String(v ?? "")
+  return {
+    name: w.name,
+    description: w.description ?? "",
+    triggerType: w.triggerType,
+    triggerConfig,
+    actionType: w.actionType,
+    actionConfig,
+  }
+}
+
 export function WorkflowEditor() {
   const { workflows, createWorkflow, updateWorkflow, deleteWorkflow } = useWorkflows()
+  const { sequences } = useSequences()
+
+  // Create dialog
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [form, setForm] = useState<WorkflowForm>(emptyForm)
+
+  // Edit dialog
+  const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null)
+  const [editForm, setEditForm] = useState<WorkflowForm>(emptyForm)
+
+  useEffect(() => {
+    if (editingWorkflow) {
+      setEditForm(workflowToForm(editingWorkflow))
+    }
+  }, [editingWorkflow])
 
   const handleCreate = async () => {
     const result = await createWorkflow({
@@ -181,6 +286,19 @@ export function WorkflowEditor() {
       setForm(emptyForm)
       setIsCreateOpen(false)
     }
+  }
+
+  const handleEdit = async () => {
+    if (!editingWorkflow) return
+    await updateWorkflow(editingWorkflow.id, {
+      name: editForm.name,
+      description: editForm.description || undefined,
+      triggerType: editForm.triggerType,
+      triggerConfig: editForm.triggerConfig,
+      actionType: editForm.actionType,
+      actionConfig: editForm.actionConfig,
+    })
+    setEditingWorkflow(null)
   }
 
   const handleToggleActive = async (id: string, isActive: boolean) => {
@@ -205,7 +323,10 @@ export function WorkflowEditor() {
         <div className="border rounded-lg divide-y">
           {workflows.map((w) => (
             <div key={w.id} className="flex items-center justify-between px-4 py-3">
-              <div className="min-w-0 flex-1">
+              <div
+                className="min-w-0 flex-1 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 transition-colors"
+                onClick={() => setEditingWorkflow(w)}
+              >
                 <div className="flex items-center gap-2">
                   <Zap className={`h-4 w-4 ${w.isActive ? "text-amber-500" : "text-muted-foreground"}`} />
                   <span className="text-sm font-medium">{w.name}</span>
@@ -235,47 +356,28 @@ export function WorkflowEditor() {
       )}
 
       {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Workflow</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Auto-tag hot leads" />
-            </div>
-            <div className="space-y-2">
-              <Label>When (trigger)</Label>
-              <Select value={form.triggerType} onValueChange={(v) => setForm((f) => ({ ...f, triggerType: v as WorkflowTriggerType, triggerConfig: v === f.triggerType ? f.triggerConfig : {} }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(triggerLabels).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <TriggerConfigFields type={form.triggerType} config={form.triggerConfig} onChange={(c) => setForm((f) => ({ ...f, triggerConfig: c }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Then (action)</Label>
-              <Select value={form.actionType} onValueChange={(v) => setForm((f) => ({ ...f, actionType: v as WorkflowActionType, actionConfig: v === f.actionType ? f.actionConfig : {} }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(actionLabels).map(([k, v]) => (
-                    <SelectItem key={k} value={k}>{v}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <ActionConfigFields type={form.actionType} config={form.actionConfig} onChange={(c) => setForm((f) => ({ ...f, actionConfig: c }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="bg-transparent" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!form.name.trim()}>Create Workflow</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <WorkflowDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        title="New Workflow"
+        form={form}
+        onFormChange={setForm}
+        sequences={sequences}
+        onSave={handleCreate}
+        saveLabel="Create Workflow"
+      />
+
+      {/* Edit Dialog */}
+      <WorkflowDialog
+        open={editingWorkflow !== null}
+        onOpenChange={(open) => { if (!open) setEditingWorkflow(null) }}
+        title="Edit Workflow"
+        form={editForm}
+        onFormChange={setEditForm}
+        sequences={sequences}
+        onSave={handleEdit}
+        saveLabel="Save"
+      />
     </div>
   )
 }

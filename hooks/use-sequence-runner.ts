@@ -116,10 +116,32 @@ export function useSequenceRunner() {
                     }
                 } else if (currentStep.step_type === "task" || currentStep.step_type === "call" || currentStep.step_type === "email" || currentStep.step_type === "sms") {
                     // Action steps — create a task and advance
-                    const stepLabel = currentStep.step_type === "call" ? "Call" :
-                        currentStep.step_type === "email" ? "Send email" :
-                            currentStep.step_type === "sms" ? "Send SMS" :
-                                (currentStep.config?.title as string) || "Task"
+                    let stepLabel: string
+                    let description: string | null = null
+                    let checklist: Array<{ label: string; done: boolean }> = []
+
+                    switch (currentStep.step_type) {
+                        case "task":
+                            stepLabel = (currentStep.config?.title as string) || "Task"
+                            description = (currentStep.config?.description as string) || null
+                            try {
+                                const parsed = JSON.parse((currentStep.config?.checklist as string) || "[]")
+                                if (Array.isArray(parsed)) checklist = parsed
+                            } catch { /* ignore */ }
+                            break
+                        case "call":
+                            stepLabel = (currentStep.config?.objective as string) || "Call"
+                            description = (currentStep.config?.talkingPoints as string) || null
+                            break
+                        case "email":
+                            stepLabel = "Send email"
+                            break
+                        case "sms":
+                            stepLabel = "Send SMS"
+                            break
+                        default:
+                            stepLabel = currentStep.step_type
+                    }
 
                     const title = `[Sequence] ${stepLabel}`
 
@@ -129,6 +151,8 @@ export function useSequenceRunner() {
                             lead_id: enrollment.lead_id,
                             type: currentStep.step_type === "call" ? "call_back" : "custom",
                             title,
+                            description,
+                            checklist: checklist.length > 0 ? checklist : [],
                             due_at: new Date().toISOString(),
                             priority: "normal",
                             project_id: projectId,

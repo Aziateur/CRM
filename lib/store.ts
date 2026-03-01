@@ -146,6 +146,11 @@ export const DEFAULT_PIPELINE_STAGES: PipelineStage[] = [
 export type TaskType = "call_back" | "follow_up" | "meeting" | "email" | "custom"
 export type TaskPriority = "low" | "normal" | "high"
 
+export interface ChecklistItem {
+  label: string
+  done: boolean
+}
+
 export interface Task {
   id: string
   leadId: string
@@ -154,6 +159,7 @@ export interface Task {
   type: TaskType
   title: string
   description?: string
+  checklist?: ChecklistItem[]
   dueAt: string
   completedAt?: string
   priority: TaskPriority
