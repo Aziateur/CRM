@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useProjectId } from "@/hooks/use-project-id"
+import { emitWorkflowEvent } from "@/lib/workflow-engine"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,6 +68,12 @@ export function AddLeadDialog({ onLeadAdded }: AddLeadDialogProps) {
         createdAt: data.created_at,
       }
       onLeadAdded(lead)
+      emitWorkflowEvent({
+        type: "new_lead",
+        leadId: lead.id,
+        payload: { company: lead.company, segment: lead.segment },
+        timestamp: new Date().toISOString(),
+      })
       setNewLead({ company: "", phone: "", segment: "" })
       setOpen(false)
     }

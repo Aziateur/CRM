@@ -91,7 +91,41 @@ graph LR
   D --> E[UI: Progress badge updates]
 ```
 
-## Phase 4: Component Plan
+## Phase 4: Risk & Doability Assessment
+
+Before listing component changes, assess the overall risk profile. This section is MANDATORY.
+
+### 4a. Major Changes Summary
+List every significant change this feature introduces. For each:
+- **What changes:** One-line description
+- **Scope:** How many files touched, how many lines changed
+- **Reversibility:** Can this be undone cleanly? (yes/partially/no)
+
+### 4b. Doability Rating
+Rate overall confidence on a scale:
+- 🟢 **HIGH (80-100%)** — Mostly wiring or additive changes, existing patterns
+- 🟡 **MEDIUM (50-79%)** — New logic, moderate complexity, some unknowns
+- 🔴 **LOW (<50%)** — Significant unknowns, new patterns, high risk of rework
+
+### 4c. Breakage Risk Per Change
+For EACH proposed change, rate:
+
+```
+| Change | Complexity | Breakage Risk | Why |
+|--------|-----------|--------------|-----|
+| Example | Trivial | 🟢 None | Returns null, no side effects |
+```
+
+### 4d. What Could Go Wrong
+List concrete failure scenarios:
+1. **Scenario:** What breaks and how
+2. **Likelihood:** Low / Medium / High
+3. **Mitigation:** What prevents it or how to recover
+
+### 4e. What WON'T Break
+Explicitly list major features/pages that are NOT touched and will remain stable.
+
+## Phase 5: Component Plan
 
 For every component created or modified:
 
@@ -107,7 +141,7 @@ For every component created or modified:
 
 Group by dependency order — build leaves first, then composites.
 
-## Phase 5: Verification Checklist
+## Phase 6: Verification Checklist
 
 Before the spec is approved, confirm:
 
