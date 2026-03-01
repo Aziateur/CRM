@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { useToast } from "@/hooks/use-toast"
 import { useProjectId } from "@/hooks/use-project-id"
-import type { Task, TaskType, TaskPriority } from "@/lib/store"
+import type { Task, TaskType, TaskPriority, ChecklistItem } from "@/lib/store"
 
 function mapTaskRow(row: Record<string, unknown>): Task {
   return {
@@ -15,6 +15,7 @@ function mapTaskRow(row: Record<string, unknown>): Task {
     type: (row.type ?? "custom") as TaskType,
     title: row.title as string,
     description: (row.description ?? undefined) as string | undefined,
+    checklist: (row.checklist ?? []) as ChecklistItem[],
     dueAt: (row.due_at ?? row.dueAt) as string,
     completedAt: (row.completed_at ?? row.completedAt) as string | undefined,
     priority: (row.priority ?? "normal") as TaskPriority,
@@ -174,5 +175,23 @@ export function useTasks(options?: { leadId?: string }) {
     }
   }, [toast])
 
-  return { tasks, setTasks, loading, refetch: fetchTasks, createTask, completeTask, rescheduleTask }
+  const toggleChecklistItem = useCallback(async (taskId: string, itemIndex: number) => {
+    const task = tasks.find((t) => t.id === taskId)
+    if (!task || !task.checklist) return
+    const updated = task.checklist.map((item, i) =>
+      i === itemIndex ? { ...item, done: !item.done } : item
+    )
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, checklist: updated } : t)))
+    try {
+      const supabase = getSupabase()
+      const { error } = await supabase.from("tasks").update({ checklist: updated }).eq("id", taskId)
+      if (error) {
+        setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, checklist: task.checklist } : t)))
+      }
+    } catch {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, checklist: task.checklist } : t)))
+    }
+  }, [tasks])
+
+  return { tasks, setTasks, loading, refetch: fetchTasks, createTask, completeTask, rescheduleTask, toggleChecklistItem }
 }

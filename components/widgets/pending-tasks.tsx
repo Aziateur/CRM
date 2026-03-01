@@ -20,7 +20,7 @@ interface PendingTasksProps {
 }
 
 export function PendingTasksWidget({ lead }: PendingTasksProps) {
-    const { tasks, completeTask } = useTasks({ leadId: lead.id })
+    const { tasks, completeTask, toggleChecklistItem } = useTasks({ leadId: lead.id })
 
     if (tasks.length === 0) return null // Hide widget if no tasks
 
@@ -37,19 +37,41 @@ export function PendingTasksWidget({ lead }: PendingTasksProps) {
                     {tasks.map((task) => {
                         const isOverdue = new Date(task.dueAt) < new Date(new Date().toDateString())
                         return (
-                            <div key={task.id} className={`flex items-center justify-between p-2 rounded border ${isOverdue ? "border-red-200 bg-red-50" : ""}`}>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-xs">{taskTypeLabels[task.type] ?? task.type}</Badge>
-                                        <span className="text-sm">{task.title}</span>
+                            <div key={task.id} className={`p-2 rounded border ${isOverdue ? "border-red-200 bg-red-50" : ""}`}>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className="text-xs">{taskTypeLabels[task.type] ?? task.type}</Badge>
+                                            <span className="text-sm">{task.title}</span>
+                                        </div>
+                                        <span className={`text-xs ${isOverdue ? "text-red-600" : "text-muted-foreground"}`}>
+                                            Due: {new Date(task.dueAt).toLocaleDateString()}
+                                        </span>
                                     </div>
-                                    <span className={`text-xs ${isOverdue ? "text-red-600" : "text-muted-foreground"}`}>
-                                        Due: {new Date(task.dueAt).toLocaleDateString()}
-                                    </span>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => completeTask(task.id)}>
+                                        <Check className="h-4 w-4" />
+                                    </Button>
                                 </div>
-                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => completeTask(task.id)}>
-                                    <Check className="h-4 w-4" />
-                                </Button>
+                                {task.checklist && task.checklist.length > 0 && (
+                                    <div className="mt-1.5 space-y-1 ml-1">
+                                        {task.checklist.map((item, i) => (
+                                            <label key={i} className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={item.done}
+                                                    onChange={() => toggleChecklistItem(task.id, i)}
+                                                    className="rounded border-gray-300 h-3.5 w-3.5"
+                                                />
+                                                <span className={`text-xs ${item.done ? "line-through text-muted-foreground" : ""}`}>
+                                                    {item.label}
+                                                </span>
+                                            </label>
+                                        ))}
+                                        <span className="text-xs text-muted-foreground">
+                                            {task.checklist.filter((c) => c.done).length}/{task.checklist.length} done
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         )
                     })}
