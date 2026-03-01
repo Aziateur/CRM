@@ -212,9 +212,16 @@ export function WorkflowEditor() {
                   {!w.isActive && <Badge variant="outline" className="text-xs">Paused</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{describeWorkflow(w)}</p>
-                {w.executionCount > 0 && (
-                  <p className="text-xs text-muted-foreground">Ran {w.executionCount} time{w.executionCount > 1 ? "s" : ""}</p>
-                )}
+                <div className="flex items-center gap-3 mt-1">
+                  {w.executionCount > 0 && (
+                    <span className="text-xs text-muted-foreground">Ran {w.executionCount}×</span>
+                  )}
+                  {w.lastExecutedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Last: {new Date(w.lastExecutedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Switch checked={w.isActive} onCheckedChange={(checked) => handleToggleActive(w.id, checked)} />
@@ -240,7 +247,7 @@ export function WorkflowEditor() {
             </div>
             <div className="space-y-2">
               <Label>When (trigger)</Label>
-              <Select value={form.triggerType} onValueChange={(v) => setForm((f) => ({ ...f, triggerType: v as WorkflowTriggerType, triggerConfig: {} }))}>
+              <Select value={form.triggerType} onValueChange={(v) => setForm((f) => ({ ...f, triggerType: v as WorkflowTriggerType, triggerConfig: v === f.triggerType ? f.triggerConfig : {} }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(triggerLabels).map(([k, v]) => (
@@ -252,7 +259,7 @@ export function WorkflowEditor() {
             </div>
             <div className="space-y-2">
               <Label>Then (action)</Label>
-              <Select value={form.actionType} onValueChange={(v) => setForm((f) => ({ ...f, actionType: v as WorkflowActionType, actionConfig: {} }))}>
+              <Select value={form.actionType} onValueChange={(v) => setForm((f) => ({ ...f, actionType: v as WorkflowActionType, actionConfig: v === f.actionType ? f.actionConfig : {} }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(actionLabels).map(([k, v]) => (

@@ -10,6 +10,7 @@ import { ClipboardList, Zap, GitBranch, BarChart3 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useFieldTemplates } from "@/hooks/use-field-templates"
 import { useSequences } from "@/hooks/use-sequences"
+import { useWorkflows } from "@/hooks/use-workflows"
 import { Badge } from "@/components/ui/badge"
 
 // ============================================================================
@@ -19,8 +20,10 @@ import { Badge } from "@/components/ui/badge"
 function WorkCenterOverview() {
     const { templates } = useFieldTemplates()
     const { sequences } = useSequences()
+    const { workflows } = useWorkflows()
 
     const activeSequences = sequences.filter(s => s.isActive)
+    const activeWorkflows = workflows.filter(w => w.isActive)
 
     return (
         <div className="space-y-6">
@@ -62,11 +65,11 @@ function WorkCenterOverview() {
                             <Zap className="h-4 w-4" />
                             Automation Rules
                         </CardDescription>
-                        <CardTitle className="text-3xl text-muted-foreground">—</CardTitle>
+                        <CardTitle className="text-3xl">{workflows.length}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <p className="text-sm text-muted-foreground">
-                            Coming soon
+                            {activeWorkflows.length} active, {workflows.length - activeWorkflows.length} paused
                         </p>
                     </CardContent>
                 </Card>

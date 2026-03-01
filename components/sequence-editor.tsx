@@ -31,6 +31,16 @@ const stepTypeLabels: Record<SequenceStepType, string> = {
   wait: "Wait",
 }
 
+function SequenceStepCountBadge({ sequenceId }: { sequenceId: string }) {
+  const { steps } = useSequenceSteps(sequenceId)
+  if (steps.length === 0) return null
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      <Badge variant="outline" className="text-xs">{steps.length} step{steps.length !== 1 ? "s" : ""}</Badge>
+    </div>
+  )
+}
+
 function SequenceDetail({ sequence, onBack }: { sequence: Sequence; onBack: () => void }) {
   const { steps, addStep, removeStep } = useSequenceSteps(sequence.id)
   const { templates } = useTemplates()
@@ -70,6 +80,7 @@ function SequenceDetail({ sequence, onBack }: { sequence: Sequence; onBack: () =
               <div className="flex-1 pt-1">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-muted-foreground w-10">Step {i + 1}</span>
                     <span className="text-sm font-medium">{stepTypeLabels[step.stepType]}</span>
                     {step.delayDays > 0 && (
                       <Badge variant="outline" className="text-xs">
@@ -192,6 +203,7 @@ export function SequenceManager() {
                     </Badge>
                   </div>
                   {seq.description && <p className="text-sm text-muted-foreground mt-0.5">{seq.description}</p>}
+                  <SequenceStepCountBadge sequenceId={seq.id} />
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch

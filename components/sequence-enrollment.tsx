@@ -22,9 +22,9 @@ function EnrollmentCard({ enrollment, sequenceName, totalSteps, onPause, onResum
   const progress = totalSteps > 0 ? Math.round((enrollment.currentStep / totalSteps) * 100) : 0
 
   return (
-    <div className="flex items-center justify-between p-2 rounded border">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+    <div className="p-3 rounded-lg border space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium truncate">{sequenceName}</span>
           <Badge
             variant={enrollment.status === "active" ? "default" : enrollment.status === "completed" ? "secondary" : "outline"}
@@ -33,33 +33,31 @@ function EnrollmentCard({ enrollment, sequenceName, totalSteps, onPause, onResum
             {enrollment.status}
           </Badge>
         </div>
-        <div className="flex items-center gap-2 mt-1">
-          <Progress value={progress} className="flex-1 h-1.5" />
-          <span className="text-xs text-muted-foreground shrink-0">
-            {enrollment.currentStep}/{totalSteps}
-          </span>
-        </div>
+        <span className="text-xs text-muted-foreground shrink-0 ml-2">
+          Step {enrollment.currentStep}/{totalSteps}
+        </span>
       </div>
+      <Progress value={progress} className="h-2.5" />
       {enrollment.status === "active" && (
-        <div className="flex gap-1 ml-2 shrink-0">
-          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onAdvance} title="Complete current step">
-            <ArrowRight className="h-3 w-3" />
+        <div className="flex items-center gap-1 pt-1">
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent" onClick={onAdvance}>
+            <ArrowRight className="h-3.5 w-3.5" /> Advance
           </Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onPause} title="Pause">
-            <Pause className="h-3 w-3" />
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent" onClick={onPause}>
+            <Pause className="h-3.5 w-3.5" /> Pause
           </Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-600" onClick={onExit} title="Exit sequence">
-            <X className="h-3 w-3" />
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-red-600" onClick={onExit}>
+            <X className="h-3.5 w-3.5" /> Exit
           </Button>
         </div>
       )}
       {enrollment.status === "paused" && (
-        <div className="flex gap-1 ml-2 shrink-0">
-          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onResume} title="Resume">
-            <Play className="h-3 w-3" />
+        <div className="flex items-center gap-1 pt-1">
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent" onClick={onResume}>
+            <Play className="h-3.5 w-3.5" /> Resume
           </Button>
-          <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-red-600" onClick={onExit} title="Exit sequence">
-            <X className="h-3 w-3" />
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-red-600" onClick={onExit}>
+            <X className="h-3.5 w-3.5" /> Exit
           </Button>
         </div>
       )}
