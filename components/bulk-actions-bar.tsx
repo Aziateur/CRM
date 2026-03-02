@@ -15,8 +15,10 @@ import { useToast } from "@/hooks/use-toast"
 import { usePipelineStages } from "@/hooks/use-pipeline-stages"
 import { useCategories } from "@/hooks/use-categories"
 import { CategoryIcon } from "@/components/category-icon"
-import { X, Trash2, ArrowRight } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { X, Trash2, ArrowRight, ListChecks } from "lucide-react"
 import { exportLeadsCSV } from "@/lib/csv"
+import { useTaskTemplates, useTaskAssignments } from "@/hooks/use-task-templates"
 import type { Lead, Attempt, FieldDefinition } from "@/lib/store"
 import { emitWorkflowEvent } from "@/lib/workflow-engine"
 
@@ -40,8 +42,11 @@ export function BulkActionsBar({
   const { toast } = useToast()
   const { stages } = usePipelineStages()
   const { activeCategories: segmentCategories } = useCategories("segment")
+  const { templates } = useTaskTemplates()
+  const { batchAssign } = useTaskAssignments()
   const [bulkStage, setBulkStage] = useState<string>("")
   const [bulkSegment, setBulkSegment] = useState<string>("")
+  const [assignOpen, setAssignOpen] = useState(false)
 
   if (selectedIds.size === 0) return null
 
@@ -118,6 +123,16 @@ export function BulkActionsBar({
     }
   }
 
+  const handleBulkAssignTemplate = async (templateId: string) => {
+    const ids = Array.from(selectedIds)
+    const count = await batchAssign(ids, templateId)
+    if (count > 0) {
+      const tpl = templates.find((t) => t.id === templateId)
+      toast({ title: `Assigned "${tpl?.name}" to ${count} leads` })
+    }
+    setAssignOpen(false)
+  }
+
   const handleExportSelected = () => {
     exportLeadsCSV(selectedLeads, attempts, fieldDefinitions)
     toast({ title: `Exported ${selectedLeads.length} leads` })
@@ -174,6 +189,31 @@ export function BulkActionsBar({
           </Button>
         )}
       </div>
+
+      {templates.length > 0 && (
+        <Popover open={assignOpen} onOpenChange={setAssignOpen}>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="outline" className="h-8">
+              <ListChecks className="h-4 w-4 mr-1" />
+              Assign Template
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2" align="start">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Assign template to {selectedIds.size} leads</p>
+            {templates.map((t) => (
+              <Button
+                key={t.id}
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start text-sm h-8"
+                onClick={() => handleBulkAssignTemplate(t.id)}
+              >
+                {t.name}
+              </Button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
 
       <Button size="sm" variant="outline" className="h-8" onClick={handleExportSelected}>
         Export

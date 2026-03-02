@@ -39,7 +39,8 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
                             id: "sec-execution",
                             name: "Execution",
                             items: [
-                                { id: "widget-pending-tasks", type: "widget", widgetId: "pending_tasks" }
+                                { id: "widget-pending-tasks", type: "widget", widgetId: "pending_tasks" },
+                                { id: "widget-task-templates", type: "widget", widgetId: "task_templates" }
                             ]
                         },
                         {
