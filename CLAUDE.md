@@ -167,3 +167,17 @@ When fixing bugs, follow `.agent/workflows/fix.md`. Key rules:
 - Seed script (`scripts/seed-users.ts`) requires `DATABASE_URL` pointing to the remote Supabase database, not localhost.
 - Supabase client is a singleton; call `resetSupabaseClient()` after login/logout to pick up the new session token header.
 - **Call recordings**: `v_attempts_enriched` joins `call_sessions` on `attempt_id`. If `attempt_id` is NULL, recordings/transcripts won't show. The webhook creates call_sessions separately — they must be linked to attempts via phone number + timestamp matching.
+
+### Deployment (MANDATORY)
+
+After every completed task:
+1. Run `npm run build` to verify the build passes
+2. Commit and push to your feature branch
+3. Merge to `sandbox` and push — this triggers Cloudflare Pages auto-deploy
+4. **Do NOT skip the merge to sandbox.** If the build passes and code is committed, always merge and push to `sandbox` for production deploy.
+
+```bash
+git checkout sandbox && git merge <feature-branch> && git push origin sandbox && git checkout <feature-branch>
+```
+
+If there are new Supabase migrations, list the exact SQL for the user to run in Supabase SQL Editor before deploying.
