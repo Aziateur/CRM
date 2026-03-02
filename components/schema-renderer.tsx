@@ -119,7 +119,8 @@ function SectionRenderer({
     fieldDefs,
     lead,
     updateLead,
-    widgets
+    widgets,
+    widgetContext
 }: SectionRendererProps) {
     // If the section is empty, don't render it at all
     if (!section.items || section.items.length === 0) return null
@@ -140,6 +141,7 @@ function SectionRenderer({
                     <WidgetComponent
                         lead={lead}
                         updateLead={updateLead}
+                        widgetContext={widgetContext}
                     />
                 </WidgetErrorBoundary>
             )
@@ -197,7 +199,7 @@ function SectionRenderer({
             const fieldsToRender = [...currentFieldGroup]
             blocks.push(
                 <Card key={`field-group-${fieldsToRender[0].id}`}>
-                    {section.name && section.name.toLowerCase() !== "execution" && section.name.toLowerCase() !== "strategy & reality" && section.name.toLowerCase() !== "history" && (
+                    {section.name && (
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-medium">{section.name}</CardTitle>
                         </CardHeader>
@@ -216,10 +218,13 @@ function SectionRenderer({
             currentFieldGroup.push(item)
         } else {
             flushFields()
-            blocks.push(renderItem(item))
+            const rendered = renderItem(item)
+            if (rendered) blocks.push(rendered)
         }
     })
     flushFields()
+
+    if (blocks.length === 0) return null
 
     return (
         <div className="space-y-6">

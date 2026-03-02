@@ -16,13 +16,6 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
                     width: 1,
                     sections: [
                         {
-                            id: "sec-prep",
-                            name: "Prep",
-                            items: [
-                                { id: "widget-prep-templates", type: "widget", widgetId: "prep_templates" }
-                            ]
-                        },
-                        {
                             id: "sec-strategy",
                             name: "Strategy & Reality",
                             items: [
@@ -39,8 +32,7 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
                             id: "sec-execution",
                             name: "Execution",
                             items: [
-                                { id: "widget-pending-tasks", type: "widget", widgetId: "pending_tasks" },
-                                { id: "widget-task-templates", type: "widget", widgetId: "task_templates" }
+                                { id: "widget-pending-tasks", type: "widget", widgetId: "pending_tasks" }
                             ]
                         },
                         {

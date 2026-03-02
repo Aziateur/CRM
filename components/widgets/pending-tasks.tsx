@@ -22,16 +22,19 @@ interface PendingTasksProps {
 export function PendingTasksWidget({ lead }: PendingTasksProps) {
     const { tasks, completeTask, toggleChecklistItem } = useTasks({ leadId: lead.id })
 
-    if (tasks.length === 0) return null // Hide widget if no tasks
-
     return (
         <Card>
             <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm font-medium">
                     <Clock className="h-4 w-4" />
-                    Pending Tasks ({tasks.length})
+                    Pending Tasks {tasks.length > 0 ? `(${tasks.length})` : ""}
                 </CardTitle>
             </CardHeader>
+            {tasks.length === 0 ? (
+                <CardContent>
+                    <p className="text-sm text-muted-foreground">No pending tasks.</p>
+                </CardContent>
+            ) : (
             <CardContent>
                 <div className="space-y-2">
                     {tasks.map((task) => {
@@ -77,6 +80,7 @@ export function PendingTasksWidget({ lead }: PendingTasksProps) {
                     })}
                 </div>
             </CardContent>
+            )}
         </Card>
     )
 }
