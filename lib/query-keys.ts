@@ -34,4 +34,6 @@ export const queryKeys = {
     intelEntries: (projectId: string, scope: string) => ["project", projectId, "intel-entries", scope] as const,
     kbCategories: (projectId: string) => ["kbCategories", projectId] as const,
     kbEntries: (projectId: string) => ["kbEntries", projectId] as const,
+    segmentEntries: (projectId: string, segmentId: string) => ["segmentEntries", projectId, segmentId] as const,
+    pinnedSegmentEntries: (projectId: string) => ["pinnedSegmentEntries", projectId] as const,
 }
