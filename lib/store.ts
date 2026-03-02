@@ -622,7 +622,6 @@ export type WorkflowActionType =
   | "create_task"
   | "update_field"
   | "send_notification"
-  | "enroll_sequence"
 
 export interface Workflow {
   id: string
@@ -651,45 +650,6 @@ export interface FieldTemplate {
   fieldKeys: string[]
   createdAt: string
   updatedAt: string
-}
-
-// ============================================================================
-// SEQUENCES
-// ============================================================================
-
-export type SequenceStepType = "call" | "email" | "sms" | "task" | "wait"
-export type SequenceEnrollmentStatus = "active" | "paused" | "completed" | "exited"
-
-export interface Sequence {
-  id: string
-  name: string
-  description?: string
-  isActive: boolean
-  createdAt: string
-}
-
-export interface SequenceStep {
-  id: string
-  sequenceId: string
-  position: number
-  stepType: SequenceStepType
-  delayDays: number
-  templateId?: string
-  config: Record<string, unknown>
-  createdAt: string
-}
-
-export interface SequenceEnrollment {
-  id: string
-  leadId: string
-  sequenceId: string
-  currentStep: number
-  status: SequenceEnrollmentStatus
-  enrolledAt: string
-  lastStepCompletedAt?: string
-  nextStepDueAt?: string
-  exitReason?: string
-  createdAt: string
 }
 
 // ============================================================================

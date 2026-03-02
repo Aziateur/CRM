@@ -133,7 +133,7 @@ function SectionRenderer({
         if (item.type === "widget" && item.widgetId) {
             const WidgetComponent = widgets[item.widgetId]
             if (!WidgetComponent) {
-                return <div key={item.id} className="text-sm text-red-500 p-2">Widget {item.widgetId} not found</div>
+                return null
             }
             return (
                 <WidgetErrorBoundary key={item.id} fallbackName={item.widgetId}>

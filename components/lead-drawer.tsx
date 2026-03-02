@@ -12,7 +12,6 @@ import { DynamicFieldRenderer } from "@/components/dynamic-field-renderer"
 
 import { CategoryIcon } from "@/components/category-icon"
 import { TagToggle } from "@/components/tag-manager"
-import { SequenceEnrollmentWidget } from "@/components/sequence-enrollment"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -76,8 +75,6 @@ import { AccountRealityWidget } from "@/components/widgets/account-reality"
 import { PendingTasksWidget } from "@/components/widgets/pending-tasks"
 import { ContactsListWidget } from "@/components/widgets/contacts-list"
 import { LastAttemptWidget } from "@/components/widgets/last-attempt"
-import { PrepTemplatesWidget } from "@/components/widgets/prep-templates"
-import { TaskTemplatesWidget } from "@/components/widgets/task-templates"
 
 const TimelineWidget = (props: WidgetProps) => (
   <InteractionsTimeline
@@ -92,14 +89,6 @@ const CallsWidget = (props: WidgetProps) => (
   <CallsPanel leadId={props.lead.id} phone={props.lead.phone} />
 )
 
-const SequenceWidgetWrapper = (props: WidgetProps) => (
-  <SequenceEnrollmentWidget leadId={props.lead.id} />
-)
-
-const TaskTemplatesWidgetWrapper = (props: WidgetProps) => (
-  <TaskTemplatesWidget leadId={props.lead.id} />
-)
-
 const drawerWidgets: WidgetRegistry = {
   account_reality: AccountRealityWidget,
   pending_tasks: PendingTasksWidget,
@@ -107,9 +96,6 @@ const drawerWidgets: WidgetRegistry = {
   last_attempt: LastAttemptWidget,
   interactions_timeline: TimelineWidget,
   calls_panel: CallsWidget,
-  sequence_widget: SequenceWidgetWrapper,
-  prep_templates: PrepTemplatesWidget,
-  task_templates: TaskTemplatesWidgetWrapper,
 }
 
 function timeSince(timestamp: string): string {

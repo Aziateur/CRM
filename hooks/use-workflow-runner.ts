@@ -159,24 +159,6 @@ async function executeAction(workflow: Workflow, event: WorkflowEvent, projectId
                 return true
             }
 
-            // ── enroll_sequence ──
-            case "enroll_sequence": {
-                const sequenceId = config.sequence_id as string | undefined
-                if (!sequenceId) return false
-
-                const { error } = await supabase
-                    .from("sequence_enrollments")
-                    .insert([{
-                        lead_id: leadId,
-                        sequence_id: sequenceId,
-                        status: "active",
-                        current_step: 0,
-                        enrolled_at: new Date().toISOString(),
-                    }])
-                // Ignore duplicate enrollments
-                if (error && !error.message?.includes("duplicate")) return false
-                return true
-            }
 
             default:
                 console.warn(`[WorkflowRunner] Unknown action type: ${workflow.actionType}`)

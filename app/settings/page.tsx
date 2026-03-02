@@ -8,13 +8,10 @@ import { LayoutBuilder } from "@/components/layout-builder"
 import { PipelineEditor } from "@/components/pipeline-editor"
 import { LeadImport } from "@/components/lead-import"
 import { TagManager } from "@/components/tag-manager"
-import { TemplateManager } from "@/components/template-manager"
 import { DuplicateDetector } from "@/components/duplicate-detector"
 import { WorkflowEditor } from "@/components/workflow-editor"
-import { SequenceManager } from "@/components/sequence-editor"
 import { ProfileTab } from "@/components/profile-tab"
 import { ReviewTemplatesTab } from "@/components/review-templates-tab"
-import { FieldTemplatesTab } from "@/components/field-templates-tab"
 import { useLeads } from "@/hooks/use-leads"
 import { useAttempts } from "@/hooks/use-attempts"
 import { useFieldDefinitions } from "@/hooks/use-field-definitions"
@@ -73,7 +70,6 @@ function PipelineTab() {
 function AutomationTab() {
   return (
     <div className="space-y-10">
-      <TemplateManager />
       <WorkflowEditor />
     </div>
   )
@@ -149,14 +145,6 @@ function DataTab() {
       <DuplicateDetector leads={leads} onLeadsChanged={refetch} />
     </div>
   )
-}
-
-// ============================================================================
-// TAB 4 — SEQUENCES
-// ============================================================================
-
-function SequencesTab() {
-  return <SequenceManager />
 }
 
 // ============================================================================
@@ -840,7 +828,7 @@ export default function SettingsPage() {
       <div className="flex-1 p-6 max-w-4xl">
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Configure your CRM pipeline, automation, framework, data, sequences, and system</p>
+          <p className="text-muted-foreground">Configure your CRM pipeline, automation, framework, data, and system</p>
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
@@ -849,11 +837,9 @@ export default function SettingsPage() {
             <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
             <TabsTrigger value="automation">Automation</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
-            <TabsTrigger value="sequences">Sequences</TabsTrigger>
             <TabsTrigger value="framework">Framework</TabsTrigger>
             <TabsTrigger value="kb-config">KB Config</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
-            <TabsTrigger value="prep-templates">Prep Templates</TabsTrigger>
             <TabsTrigger value="lead-form">Lead Form</TabsTrigger>
           </TabsList>
 
@@ -873,10 +859,6 @@ export default function SettingsPage() {
             <DataTab />
           </TabsContent>
 
-          <TabsContent value="sequences">
-            <SequencesTab />
-          </TabsContent>
-
           <TabsContent value="framework">
             <FrameworkTab />
           </TabsContent>
@@ -887,10 +869,6 @@ export default function SettingsPage() {
 
           <TabsContent value="templates">
             <ReviewTemplatesTab />
-          </TabsContent>
-
-          <TabsContent value="prep-templates">
-            <FieldTemplatesTab />
           </TabsContent>
 
           <TabsContent value="lead-form">

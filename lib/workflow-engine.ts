@@ -113,8 +113,6 @@ function describeAction(workflow: Workflow): string {
       return `set "${c.field_key || "?"}" to "${c.value || "?"}"`
     case "send_notification":
       return `show notification`
-    case "enroll_sequence":
-      return `enroll in sequence`
     default:
       return workflow.actionType
   }
