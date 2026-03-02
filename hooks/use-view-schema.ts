@@ -82,7 +82,7 @@ function generateDefaultSchema(viewType: ViewType, fields: FieldDefinition[]): V
     if (viewType === "leads_table") {
         return {
             fields: fields.slice(0, 3).map(f => f.fieldKey),
-            tableColumns: ["company", "phone", "stage", "segment", "last_outcome", "next_action", "sequence_progress"]
+            tableColumns: ["company", "phone", "stage", "segment", "last_outcome", "next_action"]
         }
     }
 
@@ -135,8 +135,6 @@ export function useViewSchema(viewType: ViewType) {
             } else {
                 // --- JUST-IN-TIME (JIT) MIGRATION ---
                 // Project doesn't have a schema yet. Let's create a default one based on current fields.
-                console.log(`[useViewSchema] No schema found for ${viewType}, creating JIT default...`)
-
                 const defaultData = generateDefaultSchema(viewType, fieldDefinitions)
 
                 const { data: newSchema, error: insertError } = await supabase
@@ -164,12 +162,12 @@ export function useViewSchema(viewType: ViewType) {
                     })
                 }
             }
-        } catch (err: any) {
-            console.error("[useViewSchema] Error:", err)
-            setError(err)
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to load view schema"
+            setError(err instanceof Error ? err : new Error(message))
             toast({
                 title: "Error loading layout",
-                description: err.message || "Failed to load view schema",
+                description: message,
                 variant: "destructive"
             })
         } finally {
@@ -200,11 +198,11 @@ export function useViewSchema(viewType: ViewType) {
                 setSchema(oldSchema) // Revert on failure
                 throw updateError
             }
-        } catch (err: any) {
-            console.error("[useViewSchema] Failed to save schema:", err)
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Could not save your changes."
             toast({
                 title: "Failed to save layout",
-                description: err.message || "Could not save your changes.",
+                description: message,
                 variant: "destructive"
             })
             throw err // Re-throw for component to handle (e.g. stop saving spinner)

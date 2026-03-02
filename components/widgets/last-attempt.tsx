@@ -1,31 +1,13 @@
 "use client"
 
 import { Lead, Attempt } from "@/lib/store"
-// ... actually wait, attempts are passed as props, or we can fetch them.
-// In the current LeadDrawer, `attempts` is a prop, and it filters `lastAttempt = [...attempts].filter(a => a.leadId === lead.id).sort().pop()`
-// BUT since this is a decoupled Widget, we could just fetch it directly, or we can accept it via the `widgets` registry.
-// If we pass `attempts` to `widgets`, we'd have to extend `WidgetProps`.
-// The cleanest way is to just fetch the last attempt for this lead inside the widget!
-
 import { useState, useEffect } from "react"
 import { getSupabase } from "@/lib/supabase"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Check, FileText } from "lucide-react"
 import { getOutcomeColor } from "@/components/leads-table"
-
-// Helper function
-function timeSince(timestamp: string): string {
-    const now = new Date()
-    const then = new Date(timestamp)
-    const diffMs = now.getTime() - then.getTime()
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffHours < 1) return "Just now"
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays === 1) return "1 day ago"
-    return `${diffDays} days ago`
-}
+import { timeSince } from "@/lib/utils"
 
 interface LastAttemptProps {
     lead: Lead

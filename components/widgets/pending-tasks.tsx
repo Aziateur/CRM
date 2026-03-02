@@ -6,14 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Clock, Check } from "lucide-react"
-
-const taskTypeLabels: Record<string, string> = {
-    call_back: "Call",
-    follow_up: "Follow up",
-    meeting: "Meeting",
-    email: "Email",
-    custom: "Task",
-}
+import { taskTypeLabels } from "@/lib/utils"
 
 interface PendingTasksProps {
     lead: Lead

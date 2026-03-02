@@ -7,26 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { AlertCircle, Clock, MessageSquare, Target, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { Lead, Attempt } from "@/lib/store"
-
-function timeSince(timestamp: string): string {
-  const now = new Date()
-  const then = new Date(timestamp)
-  const diffMs = now.getTime() - then.getTime()
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffHours < 1) return "just now"
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays === 1) return "1d ago"
-  return `${diffDays}d ago`
-}
-
-const taskTypeLabels: Record<string, string> = {
-  call_back: "Call",
-  follow_up: "Follow up",
-  meeting: "Meeting",
-  email: "Email",
-  custom: "Task",
-}
+import { timeSince, taskTypeLabels } from "@/lib/utils"
 
 interface DialContextPanelProps {
   lead: Lead

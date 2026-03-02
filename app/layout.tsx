@@ -4,8 +4,6 @@ import "./globals.css"
 import { AuthGate } from "@/components/auth-gate"
 import { QueryProvider } from "@/components/query-provider"
 import { Toaster } from "@/components/ui/toaster"
-import { WorkflowRunnerProvider } from "@/hooks/use-workflow-runner"
-
 export const metadata: Metadata = {
   title: "Dalio CRM - Sales Pipeline",
   description: "Modern Sales CRM with multi-project support",
@@ -22,7 +20,6 @@ export default function RootLayout({
         <QueryProvider>
           <AuthGate>
             {children}
-            <WorkflowRunnerProvider />
           </AuthGate>
         </QueryProvider>
         <Toaster />

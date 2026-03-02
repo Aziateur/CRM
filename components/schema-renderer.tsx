@@ -46,7 +46,7 @@ export class WidgetErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
 export interface WidgetProps {
     lead: Lead
     updateLead: (id: string, updates: Partial<Lead>) => void
-    [key: string]: any // allow passing specific components like CallPanel if needed
+    widgetContext?: Record<string, unknown>
 }
 
 export type WidgetRegistry = Record<string, React.FC<WidgetProps>>
@@ -57,7 +57,7 @@ interface SchemaRendererProps {
     lead: Lead
     updateLead: (id: string, updates: Partial<Lead>) => void
     widgets: WidgetRegistry // The actual React components passed in from the parent
-    widgetContext?: Record<string, any> // Extra props or functions to pass securely to widgets
+    widgetContext?: Record<string, unknown>
 }
 
 export function SchemaRenderer({
@@ -111,7 +111,7 @@ interface SectionRendererProps {
     lead: Lead
     updateLead: (id: string, updates: Partial<Lead>) => void
     widgets: WidgetRegistry
-    widgetContext: Record<string, any>
+    widgetContext: Record<string, unknown>
 }
 
 function SectionRenderer({
@@ -152,14 +152,14 @@ function SectionRenderer({
             if (!def) return null // Field was deleted or missing
 
             // Extract value
-            let value: any
+            let value: unknown
             if (def.source === "native") {
-                value = (lead as any)[def.fieldKey]
+                value = lead[def.fieldKey]
             } else if (def.source === "custom") {
                 value = lead.customFields?.[def.fieldKey]
             }
 
-            const handleChange = (newVal: any) => {
+            const handleChange = (newVal: unknown) => {
                 if (def.source === "native") {
                     updateLead(lead.id, { [def.fieldKey]: newVal })
                 } else if (def.source === "custom") {

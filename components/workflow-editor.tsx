@@ -343,7 +343,6 @@ export function WorkflowEditor() {
         title="New Workflow"
         form={form}
         onFormChange={setForm}
-
         onSave={handleCreate}
         saveLabel="Create Workflow"
       />
@@ -355,7 +354,6 @@ export function WorkflowEditor() {
         title="Edit Workflow"
         form={editForm}
         onFormChange={setEditForm}
-
         onSave={handleEdit}
         saveLabel="Save"
       />

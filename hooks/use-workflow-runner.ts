@@ -159,7 +159,6 @@ async function executeAction(workflow: Workflow, event: WorkflowEvent, projectId
                 return true
             }
 
-
             default:
                 console.warn(`[WorkflowRunner] Unknown action type: ${workflow.actionType}`)
                 return false

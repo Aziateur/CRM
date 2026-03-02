@@ -68,6 +68,7 @@ import { getOutcomeColor } from "@/components/leads-table"
 import { InteractionsTimeline } from "@/components/interactions-timeline"
 import { CallsPanel } from "@/components/CallsPanel"
 import { saveLeadField, SaveIndicator } from "@/lib/auto-save"
+import { timeSince } from "@/lib/utils"
 import { emitWorkflowEvent } from "@/lib/workflow-engine"
 
 import { SchemaRenderer, WidgetProps, WidgetRegistry } from "@/components/schema-renderer"
@@ -98,26 +99,6 @@ const drawerWidgets: WidgetRegistry = {
   calls_panel: CallsWidget,
 }
 
-function timeSince(timestamp: string): string {
-  const now = new Date()
-  const then = new Date(timestamp)
-  const diffMs = now.getTime() - then.getTime()
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffHours < 1) return "Just now"
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays === 1) return "1 day ago"
-  return `${diffDays} days ago`
-}
-
-
-const taskTypeLabels: Record<string, string> = {
-  call_back: "Call",
-  follow_up: "Follow up",
-  meeting: "Meeting",
-  email: "Email",
-  custom: "Task",
-}
 
 interface LeadDrawerProps {
   open: boolean

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Check, Clock, AlertCircle } from "lucide-react"
 import type { Task, Lead } from "@/lib/store"
+import { taskTypeLabels } from "@/lib/utils"
 
 interface TasksDashboardProps {
   tasks: Task[]
@@ -34,14 +35,6 @@ function formatDueDate(dueAt: string): string {
   if (diffDays === 0) return "Today"
   if (diffDays === 1) return "Tomorrow"
   return `In ${diffDays}d`
-}
-
-const taskTypeLabels: Record<string, string> = {
-  call_back: "Call",
-  follow_up: "Follow up",
-  meeting: "Meeting",
-  email: "Email",
-  custom: "Task",
 }
 
 export function TasksDashboard({ tasks, leads, onCompleteTask, onSelectLead }: TasksDashboardProps) {

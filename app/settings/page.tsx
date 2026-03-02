@@ -148,7 +148,7 @@ function DataTab() {
 }
 
 // ============================================================================
-// TAB 5 — FRAMEWORK (Modes + Levers)
+// TAB 4 — FRAMEWORK (Modes + Levers)
 // ============================================================================
 
 function FrameworkTab() {
@@ -801,7 +801,7 @@ function FrameworkTab() {
 }
 
 // ============================================================================
-// TAB 6 — SYSTEM (Diagnostics + Dev Tools / Integrations)
+// TAB 5 — SYSTEM (Diagnostics + Dev Tools / Integrations)
 // ============================================================================
 
 interface DiagCheck {

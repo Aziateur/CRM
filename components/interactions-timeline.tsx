@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import type { Attempt, AttemptOutcome } from "@/lib/store"
 import { getOutcomeColor } from "@/components/leads-table"
+import { timeSince } from "@/lib/utils"
 
 // ============================================================================
 // Types
@@ -59,18 +60,6 @@ function ActivityIcon({ type, direction }: { type: ActivityType, direction?: str
             return <Send className="h-3.5 w-3.5 text-muted-foreground" />
         default: return <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
     }
-}
-
-function timeSince(timestamp: string): string {
-    const now = new Date()
-    const then = new Date(timestamp)
-    const diffMs = now.getTime() - then.getTime()
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffHours < 1) return "Just now"
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays === 1) return "1 day ago"
-    return `${diffDays} days ago`
 }
 
 // ============================================================================
