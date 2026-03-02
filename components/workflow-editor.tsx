@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { useWorkflows } from "@/hooks/use-workflows"
-import { useSequences } from "@/hooks/use-sequences"
 import { describeWorkflow } from "@/lib/workflow-engine"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,7 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Trash2, Zap } from "lucide-react"
-import type { Workflow, WorkflowTriggerType, WorkflowActionType, Sequence } from "@/lib/store"
+import type { Workflow, WorkflowTriggerType, WorkflowActionType } from "@/lib/store"
 
 const triggerLabels: Record<WorkflowTriggerType, string> = {
   stage_change: "Stage changes",
@@ -32,7 +31,6 @@ const actionLabels: Record<WorkflowActionType, string> = {
   create_task: "Create task",
   update_field: "Update field",
   send_notification: "Show notification",
-  enroll_sequence: "Enroll in sequence",
 }
 
 interface WorkflowForm {
@@ -108,7 +106,7 @@ function TriggerConfigFields({ type, config, onChange }: { type: WorkflowTrigger
   }
 }
 
-function ActionConfigFields({ type, config, onChange, sequences }: { type: WorkflowActionType; config: Record<string, string>; onChange: (c: Record<string, string>) => void; sequences: Sequence[] }) {
+function ActionConfigFields({ type, config, onChange }: { type: WorkflowActionType; config: Record<string, string>; onChange: (c: Record<string, string>) => void }) {
   switch (type) {
     case "change_stage":
       return (
@@ -158,20 +156,6 @@ function ActionConfigFields({ type, config, onChange, sequences }: { type: Workf
           <Input value={config.message || ""} onChange={(e) => onChange({ ...config, message: e.target.value })} placeholder="Use {company}, {stage}" className="h-8" />
         </div>
       )
-    case "enroll_sequence":
-      return (
-        <div>
-          <Label className="text-xs">Sequence</Label>
-          <Select value={config.sequence_id || ""} onValueChange={(v) => onChange({ ...config, sequence_id: v })}>
-            <SelectTrigger className="h-8"><SelectValue placeholder="Select sequence..." /></SelectTrigger>
-            <SelectContent>
-              {sequences.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )
     default:
       return null
   }
@@ -185,12 +169,11 @@ interface WorkflowDialogProps {
   title: string
   form: WorkflowForm
   onFormChange: (form: WorkflowForm | ((prev: WorkflowForm) => WorkflowForm)) => void
-  sequences: Sequence[]
   onSave: () => void
   saveLabel: string
 }
 
-function WorkflowDialog({ open, onOpenChange, title, form, onFormChange, sequences, onSave, saveLabel }: WorkflowDialogProps) {
+function WorkflowDialog({ open, onOpenChange, title, form, onFormChange, onSave, saveLabel }: WorkflowDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -224,7 +207,7 @@ function WorkflowDialog({ open, onOpenChange, title, form, onFormChange, sequenc
                 ))}
               </SelectContent>
             </Select>
-            <ActionConfigFields type={form.actionType} config={form.actionConfig} onChange={(c) => onFormChange((f) => ({ ...f, actionConfig: c }))} sequences={sequences} />
+            <ActionConfigFields type={form.actionType} config={form.actionConfig} onChange={(c) => onFormChange((f) => ({ ...f, actionConfig: c }))} />
           </div>
         </div>
         <DialogFooter>
@@ -257,8 +240,6 @@ function workflowToForm(w: Workflow): WorkflowForm {
 
 export function WorkflowEditor() {
   const { workflows, createWorkflow, updateWorkflow, deleteWorkflow } = useWorkflows()
-  const { sequences } = useSequences()
-
   // Create dialog
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [form, setForm] = useState<WorkflowForm>(emptyForm)
@@ -362,7 +343,7 @@ export function WorkflowEditor() {
         title="New Workflow"
         form={form}
         onFormChange={setForm}
-        sequences={sequences}
+
         onSave={handleCreate}
         saveLabel="Create Workflow"
       />
@@ -374,7 +355,7 @@ export function WorkflowEditor() {
         title="Edit Workflow"
         form={editForm}
         onFormChange={setEditForm}
-        sequences={sequences}
+
         onSave={handleEdit}
         saveLabel="Save"
       />
