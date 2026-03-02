@@ -693,6 +693,46 @@ export interface SequenceEnrollment {
 }
 
 // ============================================================================
+// TASK TEMPLATES
+// ============================================================================
+
+export type TemplateItemType = "checkbox" | "link" | "note" | "group"
+
+export interface TemplateItem {
+  id: string
+  label: string
+  type: TemplateItemType
+  children?: TemplateItem[]
+}
+
+export interface TaskTemplate {
+  id: string
+  projectId: string
+  name: string
+  description?: string
+  items: TemplateItem[]
+  createdAt: string
+}
+
+export type TaskAssignmentStatus = "active" | "completed"
+
+export interface TaskAssignmentItemData {
+  done: boolean
+  value?: string
+}
+
+export interface TaskAssignment {
+  id: string
+  projectId: string
+  leadId: string
+  templateId: string
+  status: TaskAssignmentStatus
+  data: Record<string, TaskAssignmentItemData>
+  completedAt?: string
+  createdAt: string
+}
+
+// ============================================================================
 // SAMPLE DATA
 // ============================================================================
 

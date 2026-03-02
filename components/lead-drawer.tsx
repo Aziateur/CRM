@@ -77,6 +77,7 @@ import { PendingTasksWidget } from "@/components/widgets/pending-tasks"
 import { ContactsListWidget } from "@/components/widgets/contacts-list"
 import { LastAttemptWidget } from "@/components/widgets/last-attempt"
 import { PrepTemplatesWidget } from "@/components/widgets/prep-templates"
+import { TaskTemplatesWidget } from "@/components/widgets/task-templates"
 
 const TimelineWidget = (props: WidgetProps) => (
   <InteractionsTimeline
@@ -95,6 +96,10 @@ const SequenceWidgetWrapper = (props: WidgetProps) => (
   <SequenceEnrollmentWidget leadId={props.lead.id} />
 )
 
+const TaskTemplatesWidgetWrapper = (props: WidgetProps) => (
+  <TaskTemplatesWidget leadId={props.lead.id} />
+)
+
 const drawerWidgets: WidgetRegistry = {
   account_reality: AccountRealityWidget,
   pending_tasks: PendingTasksWidget,
@@ -104,6 +109,7 @@ const drawerWidgets: WidgetRegistry = {
   calls_panel: CallsWidget,
   sequence_widget: SequenceWidgetWrapper,
   prep_templates: PrepTemplatesWidget,
+  task_templates: TaskTemplatesWidgetWrapper,
 }
 
 function timeSince(timestamp: string): string {
