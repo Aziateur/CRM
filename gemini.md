@@ -128,6 +128,8 @@ const DEFAULT_STAGE = "New"  // matches DB DEFAULT on leads.stage
 8. **Never rewrite layout/sidebar without checking CLAUDE.md** — surgical edits only
 9. **Never add emojis as UI icons** — use Lucide React icons
 10. **Never make stage nullable in new code** — `lead.stage` is always a string
+11. **Never over-investigate deployments** — when the user shows a screenshot (e.g., Cloudflare dashboard), trust it. Read the screenshot, identify what's wrong (e.g., preview branches not merged), and fix it in the fewest commands possible. Don't browse dashboards, don't run redundant build checks if previews already compiled, don't explain what you think the state is — just `git merge` + `git push`.
+12. **Never re-discover what the user already showed you** — if the user provides context (screenshot, error, log), act on it directly. Don't waste round-trips confirming what's already visible.
 
 ---
 
