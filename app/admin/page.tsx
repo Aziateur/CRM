@@ -277,11 +277,12 @@ export default function AdminPage() {
 
   // Load projects tab data when selected
   useEffect(() => {
-    if (activeTab === "projects" && isSuperAdmin && allProjects.length === 0) {
+    if (activeTab === "projects" && isSuperAdmin) {
       fetchAllProjects()
       if (systemUsers.length === 0) fetchSystemUsers()
     }
-  }, [activeTab, isSuperAdmin, allProjects.length, systemUsers.length, fetchAllProjects, fetchSystemUsers])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isSuperAdmin])
 
   // ─── Create User ───
   const handleCreateUser = async () => {
