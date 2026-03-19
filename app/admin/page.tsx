@@ -43,6 +43,7 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  FolderOpen,
 } from "lucide-react"
 
 // ─── Types ───
@@ -72,7 +73,15 @@ interface CreatedUserInfo {
   projectRole: string
 }
 
-type Tab = "team" | "system"
+interface AllProject {
+  id: string
+  name: string
+  owner_id: string
+  owner_name: string
+  members: { id: string; name: string; email: string; role: string }[]
+}
+
+type Tab = "team" | "system" | "projects"
 
 // ─── Password Generator ───
 function generatePassword(length = 16): string {
@@ -129,6 +138,19 @@ export default function AdminPage() {
   const [createdUser, setCreatedUser] = useState<CreatedUserInfo | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
+  // Add existing user to project
+  const [enrollUserId, setEnrollUserId] = useState("")
+  const [enrollRole, setEnrollRole] = useState<"manager" | "rep">("rep")
+  const [enrolling, setEnrolling] = useState(false)
+  const [availableUsers, setAvailableUsers] = useState<SystemUser[]>([])
+
+  // Projects tab
+  const [allProjects, setAllProjects] = useState<AllProject[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [addToProjectUserId, setAddToProjectUserId] = useState("")
+  const [addToProjectRole, setAddToProjectRole] = useState<"manager" | "rep">("rep")
+  const [addingToProject, setAddingToProject] = useState<string | null>(null)
+
   // Protection: must be manager+ or superadmin
   useEffect(() => {
     if (!authLoading && user && !canManage && !isSuperAdmin) {
@@ -182,14 +204,84 @@ export default function AdminPage() {
     setSystemUsers(filtered)
   }, [toast, user?.system_role])
 
+  const fetchAvailableUsers = useCallback(async () => {
+    if (!currentProjectId) return
+    const supabase = getSupabase()
+    // Get all users
+    const { data: allUsers, error: usersErr } = await supabase
+      .from("users")
+      .select("id, email, name, system_role, avatar_url, is_active, created_at")
+      .eq("is_active", true)
+    if (usersErr) return
+    // Get current project members
+    const { data: currentMembers, error: membersErr } = await supabase
+      .from("user_projects")
+      .select("user_id")
+      .eq("project_id", currentProjectId)
+    if (membersErr) return
+    const memberIds = new Set((currentMembers || []).map((m: Record<string, unknown>) => m.user_id as string))
+    setAvailableUsers((allUsers || []).filter((u: SystemUser) => !memberIds.has(u.id) && u.system_role !== 'service'))
+  }, [currentProjectId])
+
+  const fetchAllProjects = useCallback(async () => {
+    setProjectsLoading(true)
+    const supabase = getSupabase()
+    const { data: projects, error: projErr } = await supabase
+      .from("projects")
+      .select("id, name, owner_id")
+      .order("name")
+    if (projErr) {
+      toast({ title: "Error", description: projErr.message, variant: "destructive" })
+      setProjectsLoading(false)
+      return
+    }
+    // For each project, get members
+    const result: AllProject[] = []
+    for (const p of (projects || [])) {
+      const proj = p as { id: string; name: string; owner_id: string }
+      const { data: mems } = await supabase
+        .from("user_projects")
+        .select("role, users(id, email, name)")
+        .eq("project_id", proj.id)
+      const ownerRow = (mems || []).find((m: Record<string, unknown>) => m.role === 'owner')
+      const ownerUser = ownerRow ? (ownerRow as Record<string, unknown>).users as Record<string, unknown> : null
+      result.push({
+        id: proj.id,
+        name: proj.name,
+        owner_id: proj.owner_id,
+        owner_name: ownerUser ? (ownerUser.name as string) : 'Unknown',
+        members: (mems || []).map((m: Record<string, unknown>) => {
+          const u = m.users as Record<string, unknown>
+          return {
+            id: u.id as string,
+            name: u.name as string,
+            email: u.email as string,
+            role: m.role as string,
+          }
+        }),
+      })
+    }
+    setAllProjects(result)
+    setProjectsLoading(false)
+  }, [toast])
+
   useEffect(() => {
     if (!user) return
     setLoading(true)
     Promise.all([
       fetchMembers(),
+      fetchAvailableUsers(),
       ...(isSuperAdmin ? [fetchSystemUsers()] : []),
     ]).finally(() => setLoading(false))
-  }, [user, currentProjectId, fetchMembers, fetchSystemUsers, isSuperAdmin])
+  }, [user, currentProjectId, fetchMembers, fetchAvailableUsers, fetchSystemUsers, isSuperAdmin])
+
+  // Load projects tab data when selected
+  useEffect(() => {
+    if (activeTab === "projects" && isSuperAdmin && allProjects.length === 0) {
+      fetchAllProjects()
+      if (systemUsers.length === 0) fetchSystemUsers()
+    }
+  }, [activeTab, isSuperAdmin, allProjects.length, systemUsers.length, fetchAllProjects, fetchSystemUsers])
 
   // ─── Create User ───
   const handleCreateUser = async () => {
@@ -337,6 +429,100 @@ export default function AdminPage() {
     setActionLoading(null)
   }
 
+  // ─── Enroll Existing User ───
+  const handleEnrollUser = async () => {
+    if (!enrollUserId || !user || !currentProjectId) return
+    setEnrolling(true)
+    try {
+      const supabase = getSupabase()
+      const targetUser = availableUsers.find(u => u.id === enrollUserId)
+      if (!targetUser) return
+      const { data, error } = await supabase.rpc("invite_to_project", {
+        p_project_id: currentProjectId,
+        p_inviter_id: user.id,
+        p_email: targetUser.email,
+        p_role: enrollRole,
+      })
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
+      } else {
+        const result = data as { success: boolean; error?: string }
+        if (result.success) {
+          toast({ title: "Added", description: `${targetUser.name} added to this project.` })
+          setEnrollUserId("")
+          setEnrollRole("rep")
+          fetchMembers()
+          fetchAvailableUsers()
+        } else {
+          toast({ title: "Error", description: result.error ?? "Failed to add user", variant: "destructive" })
+        }
+      }
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed", variant: "destructive" })
+    }
+    setEnrolling(false)
+  }
+
+  // ─── Add User to Any Project (superadmin) ───
+  const handleAddUserToProject = async (projectId: string) => {
+    if (!addToProjectUserId || !user) return
+    setAddingToProject(projectId)
+    try {
+      const supabase = getSupabase()
+      const targetUser = systemUsers.find(u => u.id === addToProjectUserId)
+      if (!targetUser) return
+      const { data, error } = await supabase.rpc("invite_to_project", {
+        p_project_id: projectId,
+        p_inviter_id: user.id,
+        p_email: targetUser.email,
+        p_role: addToProjectRole,
+      })
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
+      } else {
+        const result = data as { success: boolean; error?: string }
+        if (result.success) {
+          toast({ title: "Added", description: `${targetUser.name} added to project.` })
+          setAddToProjectUserId("")
+          fetchAllProjects()
+        } else {
+          toast({ title: "Error", description: result.error ?? "Failed", variant: "destructive" })
+        }
+      }
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed", variant: "destructive" })
+    }
+    setAddingToProject(null)
+  }
+
+  // ─── Remove User from Any Project (superadmin) ───
+  const handleRemoveFromProject = async (projectId: string, targetUserId: string, targetName: string) => {
+    if (!user) return
+    setActionLoading(targetUserId)
+    try {
+      const supabase = getSupabase()
+      const { data, error } = await supabase.rpc("remove_from_project", {
+        p_project_id: projectId,
+        p_remover_id: user.id,
+        p_target_user_id: targetUserId,
+      })
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
+      } else {
+        const result = data as { success: boolean; error?: string }
+        if (result.success) {
+          toast({ title: "Removed", description: `${targetName} removed from project.` })
+          fetchAllProjects()
+        } else {
+          toast({ title: "Error", description: result.error ?? "Failed to remove", variant: "destructive" })
+        }
+      }
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed", variant: "destructive" })
+    }
+    setActionLoading(null)
+  }
+
   // ─── Helpers ───
   const getInitials = (name: string) =>
     name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
@@ -379,6 +565,7 @@ export default function AdminPage() {
   // ─── Tabs ───
   const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { key: "team", label: "Team", icon: <Users className="h-4 w-4" />, show: canManage },
+    { key: "projects", label: "Projects", icon: <FolderOpen className="h-4 w-4" />, show: isSuperAdmin },
     { key: "system", label: "System Users", icon: <Shield className="h-4 w-4" />, show: isSuperAdmin },
   ]
 
@@ -599,6 +786,64 @@ export default function AdminPage() {
                   </Card>
                 )}
 
+                {/* Add existing user */}
+                {isSuperAdmin && availableUsers.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <UserPlus className="h-4 w-4" />
+                        Add Existing User to Project
+                      </CardTitle>
+                      <CardDescription>
+                        Add a user who already has an account to this project.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-end gap-3">
+                        <div className="flex-1 space-y-1.5">
+                          <Label className="text-xs">User</Label>
+                          <Select value={enrollUserId} onValueChange={setEnrollUserId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select user..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableUsers.map(u => (
+                                <SelectItem key={u.id} value={u.id}>
+                                  {u.name} ({u.email})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="w-32 space-y-1.5">
+                          <Label className="text-xs">Role</Label>
+                          <Select value={enrollRole} onValueChange={(v: "manager" | "rep") => setEnrollRole(v)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isProjectOwner && <SelectItem value="manager">Manager</SelectItem>}
+                              <SelectItem value="rep">Rep</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          onClick={handleEnrollUser}
+                          disabled={!enrollUserId || enrolling}
+                          className="gap-1.5"
+                        >
+                          {enrolling ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <UserPlus className="h-4 w-4" />
+                          )}
+                          Add
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Members table */}
                 <Card>
                   <CardHeader className="pb-3">
@@ -692,6 +937,135 @@ export default function AdminPage() {
                     )}
                   </CardContent>
                 </Card>
+              </div>
+            )}
+
+            {/* ─── Projects Tab ─── */}
+            {activeTab === "projects" && isSuperAdmin && (
+              <div className="space-y-6">
+                {projectsLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  allProjects.map(project => (
+                    <Card key={project.id}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <FolderOpen className="h-4 w-4" />
+                            {project.name}
+                          </CardTitle>
+                          <Badge variant="outline" className="text-[10px]">
+                            {project.members.length} members
+                          </Badge>
+                        </div>
+                        <CardDescription>Owner: {project.owner_name}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Add user to this project */}
+                        <div className="flex items-end gap-3">
+                          <div className="flex-1 space-y-1.5">
+                            <Label className="text-xs">Add User</Label>
+                            <Select value={addToProjectUserId} onValueChange={setAddToProjectUserId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select user..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {systemUsers
+                                  .filter(u => u.is_active && u.system_role !== 'service' && !project.members.some(m => m.id === u.id))
+                                  .map(u => (
+                                    <SelectItem key={u.id} value={u.id}>
+                                      {u.name} ({u.email})
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="w-32 space-y-1.5">
+                            <Label className="text-xs">Role</Label>
+                            <Select value={addToProjectRole} onValueChange={(v: "manager" | "rep") => setAddToProjectRole(v)}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="manager">Manager</SelectItem>
+                                <SelectItem value="rep">Rep</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleAddUserToProject(project.id)}
+                            disabled={!addToProjectUserId || addingToProject === project.id}
+                            className="gap-1.5"
+                          >
+                            {addingToProject === project.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <UserPlus className="h-4 w-4" />
+                            )}
+                            Add
+                          </Button>
+                        </div>
+
+                        {/* Members list */}
+                        {project.members.length > 0 && (
+                          <div className="rounded-md border">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>User</TableHead>
+                                  <TableHead>Email</TableHead>
+                                  <TableHead>Role</TableHead>
+                                  <TableHead className="w-16"></TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {project.members.map(m => (
+                                  <TableRow key={m.id}>
+                                    <TableCell>
+                                      <div className="flex items-center gap-2">
+                                        <Avatar className="h-7 w-7">
+                                          <AvatarFallback className="text-xs">{getInitials(m.name)}</AvatarFallback>
+                                        </Avatar>
+                                        <span className="text-sm font-medium">{m.name}</span>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{m.email}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className={`text-xs gap-1 ${roleBadgeColor(m.role)}`}>
+                                        {roleIcon(m.role)}
+                                        {m.role}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      {m.role !== "owner" && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                          disabled={actionLoading === m.id}
+                                          onClick={() => handleRemoveFromProject(project.id, m.id, m.name)}
+                                        >
+                                          {actionLoading === m.id ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                          ) : (
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          )}
+                                        </Button>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
               </div>
             )}
 
