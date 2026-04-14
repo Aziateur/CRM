@@ -352,6 +352,9 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
       if (field) {
         if (field.entity === "contact") {
           contactFieldMappings.push({ colIdx, field })
+        } else if (field.group === "custom") {
+          // Custom fields go into custom_fields JSONB, not as top-level columns
+          customFieldMappings.push({ colIdx, fieldKey: field.key, fieldLabel: field.label })
         } else {
           leadFieldMappings.push({ colIdx, field })
         }
