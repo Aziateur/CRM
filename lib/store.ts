@@ -264,10 +264,17 @@ export interface ViewSchema {
 
 export interface Contact {
   id: string
-  name: string
+  name: string            // display name (backward compat)
+  firstName?: string
+  lastName?: string
+  jobTitle?: string
   role: ContactRole
-  phone?: string
+  phone?: string          // primary dial number
+  mobilePhone?: string
+  workPhone?: string
   email?: string
+  linkedin?: string
+  seniorityLevel?: string
 }
 
 // Constraint options as chips

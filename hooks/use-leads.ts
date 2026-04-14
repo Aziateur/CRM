@@ -55,9 +55,16 @@ export function mapLeadRow(l: Record<string, unknown>): Lead {
     contacts: ((l.contacts || []) as Record<string, unknown>[]).map((c): Contact => ({
       id: c.id as string,
       name: c.name as string,
+      firstName: (c.first_name ?? c.firstName) as string | undefined,
+      lastName: (c.last_name ?? c.lastName) as string | undefined,
+      jobTitle: (c.job_title ?? c.jobTitle) as string | undefined,
       role: (c.role || "Other") as Contact["role"],
       phone: c.phone as string | undefined,
+      mobilePhone: (c.mobile_phone ?? c.mobilePhone) as string | undefined,
+      workPhone: (c.work_phone ?? c.workPhone) as string | undefined,
       email: c.email as string | undefined,
+      linkedin: c.linkedin as string | undefined,
+      seniorityLevel: (c.seniority_level ?? c.seniorityLevel) as string | undefined,
     })),
     createdAt: (l.created_at || l.createdAt || new Date().toISOString()) as string,
     // Pass through promoted columns (full_name, last_name, mobile_number, etc.)
