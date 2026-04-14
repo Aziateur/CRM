@@ -21,6 +21,7 @@ import { LogAttemptModal } from "@/components/log-attempt-modal"
 import { AttemptDetailModal } from "@/components/attempt-detail-modal"
 import { AddLeadDialog } from "@/components/add-lead-dialog"
 import { Button } from "@/components/ui/button"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -80,6 +81,11 @@ export default function LeadsPage() {
   const [newViewName, setNewViewName] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
+  // Pagination
+  const PAGE_SIZE_OPTIONS = [25, 50, 100, 1000]
+  const [pageSize, setPageSize] = useState(50)
+  const [currentPage, setCurrentPage] = useState(0)
+
   // Filters
   const [segmentFilter, setSegmentFilter] = useState<string>("all")
   const [outcomeFilter, setOutcomeFilter] = useState<string>("all")
@@ -125,6 +131,15 @@ export default function LeadsPage() {
     const matchesSearch = lead.company.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSegment && matchesOutcome && matchesStage && matchesSearch
   })
+
+  // Pagination derived values
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize))
+  // Clamp page to valid range when filters change
+  const safePage = Math.min(currentPage, totalPages - 1)
+  if (safePage !== currentPage) setCurrentPage(safePage)
+  const paginatedLeads = filteredLeads.slice(safePage * pageSize, (safePage + 1) * pageSize)
+  const pageStart = safePage * pageSize + 1
+  const pageEnd = Math.min((safePage + 1) * pageSize, filteredLeads.length)
 
   const openLeadDrawer = (lead: LeadWithDerived) => {
     setSelectedLead(lead)
@@ -320,7 +335,7 @@ export default function LeadsPage() {
         {/* Main View */}
         {viewMode === "table" ? (
           <LeadsTable
-            leads={filteredLeads}
+            leads={paginatedLeads}
             loading={loading}
             stages={stages}
             attempts={attempts}
@@ -346,9 +361,53 @@ export default function LeadsPage() {
           />
         )}
 
-        <p className="text-sm text-muted-foreground mt-4">
-          Showing {filteredLeads.length} of {leads.length} leads
-        </p>
+        {/* Pagination controls */}
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Showing {pageStart}–{pageEnd} of {filteredLeads.length}
+            {filteredLeads.length !== leads.length && ` (${leads.length} total)`}
+          </p>
+          <div className="flex items-center gap-3">
+            {/* Page size selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Per page:</span>
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setCurrentPage(0) }}>
+                <SelectTrigger className="h-8 w-20 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Page navigation */}
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={safePage === 0}
+                onClick={() => setCurrentPage(safePage - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm tabular-nums px-2">
+                {safePage + 1} / {totalPages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0"
+                disabled={safePage >= totalPages - 1}
+                onClick={() => setCurrentPage(safePage + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Modals & Drawer */}
