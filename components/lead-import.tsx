@@ -441,6 +441,35 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
           }
         }
 
+        // Mirror mapped contact fields backwards to the Lead's custom fields or phone
+        // This ensures the custom fields (like "Full Name", "Job Title") in the LeadDrawer are populated
+        if (contactFieldMappings.length > 0) {
+          const firstRow = csv.rows[rowIndices[0]]
+          for (const m of contactFieldMappings) {
+            const val = firstRow[m.colIdx]?.trim()
+            if (!val) continue
+            
+            if (m.field.key === "contact_mobile" || m.field.key === "contact_work_phone") {
+              if (record.phone === undefined) record.phone = val
+            }
+            
+            // Generate a likely custom field key (e.g. "contact_full_name" -> "full_name")
+            const baseKey = m.field.key.replace("contact_", "")
+            
+            // Check if there is an existing fieldDefinition to match against
+            const fd = fieldDefinitions.find(f => 
+              f.fieldKey === baseKey || 
+              f.fieldKey === m.field.label.toLowerCase().replace(/\s+/g, '_') ||
+              (baseKey === "mobile" && f.fieldKey === "mobile_number")
+            )
+            
+            const targetKey = fd ? fd.fieldKey : (baseKey === "mobile" ? "mobile_number" : baseKey)
+            if (customFields[targetKey] === undefined) {
+              customFields[targetKey] = val
+            }
+          }
+        }
+
         if (Object.keys(customFields).length > 0) {
           record.custom_fields = customFields
         }
@@ -579,6 +608,30 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
         for (const m of customFieldMappings) {
           const val = row[m.colIdx]?.trim()
           if (val) customFields[m.fieldKey] = val
+        }
+
+        // Mirror mapped contact fields backwards to the Lead's custom fields or phone
+        if (contactFieldMappings.length > 0) {
+          for (const m of contactFieldMappings) {
+            const val = row[m.colIdx]?.trim()
+            if (!val) continue
+            
+            if (m.field.key === "contact_mobile" || m.field.key === "contact_work_phone") {
+              if (record.phone === undefined) record.phone = val
+            }
+            
+            const baseKey = m.field.key.replace("contact_", "")
+            const fd = fieldDefinitions.find(f => 
+              f.fieldKey === baseKey || 
+              f.fieldKey === m.field.label.toLowerCase().replace(/\s+/g, '_') ||
+              (baseKey === "mobile" && f.fieldKey === "mobile_number")
+            )
+            
+            const targetKey = fd ? fd.fieldKey : (baseKey === "mobile" ? "mobile_number" : baseKey)
+            if (customFields[targetKey] === undefined) {
+              customFields[targetKey] = val
+            }
+          }
         }
 
         if (Object.keys(customFields).length > 0) {
