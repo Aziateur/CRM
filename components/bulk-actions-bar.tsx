@@ -57,13 +57,19 @@ export function BulkActionsBar({
     const supabase = getSupabase()
     const ids = Array.from(selectedIds)
 
-    const { error } = await supabase
-      .from("leads")
-      .update({ stage: bulkStage, stage_changed_at: new Date().toISOString() })
-      .in("id", ids)
+    const CHUNK = 50
+    let failed = 0
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK)
+      const { error } = await supabase
+        .from("leads")
+        .update({ stage: bulkStage, stage_changed_at: new Date().toISOString() })
+        .in("id", chunk)
+      if (error) failed += chunk.length
+    }
 
-    if (error) {
-      toast({ variant: "destructive", title: "Bulk update failed", description: error.message })
+    if (failed > 0) {
+      toast({ variant: "destructive", title: "Bulk update partially failed", description: `${failed} leads could not be updated.` })
     } else {
       toast({ title: `${ids.length} leads moved to ${bulkStage}` })
 
@@ -76,10 +82,9 @@ export function BulkActionsBar({
           timestamp: new Date().toISOString(),
         })
       }
-
-      onLeadsUpdated()
-      onClearSelection()
     }
+    onLeadsUpdated()
+    onClearSelection()
     setBulkStage("")
   }
 
@@ -88,19 +93,25 @@ export function BulkActionsBar({
     const supabase = getSupabase()
     const ids = Array.from(selectedIds)
 
-    const { error } = await supabase
-      .from("leads")
-      .update({ segment: bulkSegment })
-      .in("id", ids)
+    const CHUNK = 50
+    let failed = 0
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK)
+      const { error } = await supabase
+        .from("leads")
+        .update({ segment: bulkSegment })
+        .in("id", chunk)
+      if (error) failed += chunk.length
+    }
 
-    if (error) {
-      toast({ variant: "destructive", title: "Bulk segment update failed", description: error.message })
+    if (failed > 0) {
+      toast({ variant: "destructive", title: "Bulk segment update partially failed", description: `${failed} leads could not be updated.` })
     } else {
       const segName = segmentCategories.find(s => s.id === bulkSegment)?.name ?? bulkSegment
       toast({ title: `${ids.length} leads moved to segment "${segName}"` })
-      onLeadsUpdated()
-      onClearSelection()
     }
+    onLeadsUpdated()
+    onClearSelection()
     setBulkSegment("")
   }
 
@@ -109,18 +120,25 @@ export function BulkActionsBar({
     const supabase = getSupabase()
     const ids = Array.from(selectedIds)
 
-    const { error } = await supabase
-      .from("leads")
-      .delete()
-      .in("id", ids)
+    // Batch deletes to avoid URL length limits (Supabase .in() puts IDs in query string)
+    const CHUNK = 50
+    let failed = 0
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK)
+      const { error } = await supabase
+        .from("leads")
+        .delete()
+        .in("id", chunk)
+      if (error) failed += chunk.length
+    }
 
-    if (error) {
-      toast({ variant: "destructive", title: "Bulk delete failed", description: error.message })
+    if (failed > 0) {
+      toast({ variant: "destructive", title: "Bulk delete partially failed", description: `${failed} of ${ids.length} leads could not be deleted.` })
     } else {
       toast({ title: `${ids.length} leads deleted` })
-      onLeadsUpdated()
-      onClearSelection()
     }
+    onLeadsUpdated()
+    onClearSelection()
   }
 
   const handleBulkAssignTemplate = async (templateId: string) => {
