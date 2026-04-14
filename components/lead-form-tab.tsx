@@ -85,8 +85,8 @@ const FIELD_TYPES: { key: FieldType; label: string; icon: string }[] = [
 ]
 
 const SECTION_META: Record<string, { label: string; description: string }> = {
-    core: { label: "Contact Info", description: "Essential contact fields shown at the top of the lead form" },
-    detail: { label: "Details", description: "Additional information fields shown below contact info" },
+    core: { label: "Account Info", description: "Essential account/company fields shown near the top of the lead form" },
+    detail: { label: "Details", description: "Additional information fields" },
 }
 
 /** System fields that cannot be deleted (but CAN be hidden/reordered) */
@@ -328,7 +328,7 @@ export function LeadFormTab() {
                                 <div className="divide-y min-h-[48px]">
                                     {coreIds.length === 0 ? (
                                         <p className="text-sm text-muted-foreground py-6 text-center">
-                                            Drag fields here to add them to Contact Info
+                                            Drag fields here to add them to Account Info
                                         </p>
                                     ) : (
                                         coreIds.map((id) => {
@@ -427,7 +427,7 @@ export function LeadFormTab() {
                                 <Select value={newFieldSection} onValueChange={(v) => setNewFieldSection(v as FieldSection)}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="core">Contact Info</SelectItem>
+                                        <SelectItem value="core">Account Info</SelectItem>
                                         <SelectItem value="detail">Details</SelectItem>
                                     </SelectContent>
                                 </Select>

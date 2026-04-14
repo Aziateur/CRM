@@ -152,8 +152,14 @@ export default function LeadsPage() {
   }
 
   const handleCall = async () => {
-    if (!selectedLead || !selectedLead.phone) return
-    const phone = selectedLead.phone.replace(/[^+\d]/g, "")
+    let callPhone = selectedLead?.phone
+    if (!callPhone && selectedLead?.contacts?.length) {
+      const primary = selectedLead.contacts.find(c => c.role === "dm" || c.role === "decision_maker") || selectedLead.contacts[0]
+      callPhone = primary.phone || primary.mobilePhone || primary.workPhone
+    }
+    
+    if (!selectedLead || !callPhone) return
+    const phone = callPhone.replace(/[^+\d]/g, "")
     const w = window.open(`tel:${phone}`, "_blank", "noopener,noreferrer")
     if (!w) {
       toast({ variant: "destructive", title: "Popup blocked", description: "Please allow popups for this site to launch the dialer." })

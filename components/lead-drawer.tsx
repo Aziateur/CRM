@@ -92,7 +92,6 @@ const CallsWidget = (props: WidgetProps) => (
 const drawerWidgets: WidgetRegistry = {
   account_reality: AccountRealityWidget,
   pending_tasks: PendingTasksWidget,
-  contacts_list: ContactsListWidget,
   last_attempt: LastAttemptWidget,
   interactions_timeline: TimelineWidget,
   calls_panel: CallsWidget,
@@ -300,7 +299,15 @@ export function LeadDrawer({
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="p-6 pb-20">
+            <div className="p-6 pb-20 space-y-6">
+              {/* Hardcoded Contacts List Widget at the top for true B2B architecture */}
+              <div className="w-full">
+                <ContactsListWidget 
+                  lead={ed} 
+                  updateLead={(id, updates) => setEditedLead((prev) => prev ? { ...prev, ...updates } : null)} 
+                />
+              </div>
+
               <SchemaRenderer
                 viewType="lead_drawer"
                 lead={ed}

@@ -500,12 +500,12 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
               const leadId = data[j].id
               const { rowIndices } = groupSlice[j]
 
-              const contactInserts: Record<string, unknown>[] = []
+              const contactMergeMap = new Map<string, Record<string, unknown>>()
+
               for (const rowIdx of rowIndices) {
                 const row = csv.rows[rowIdx]
                 const contact: Record<string, unknown> = {
-                  lead_id: leadId,
-                  role: "Other",
+                  role: "Other"
                 }
 
                 // Map contact fields
@@ -543,12 +543,36 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                   contact.phone = contact.mobile_phone || contact.work_phone || data[j].phone || null
                 }
 
-                // Only add if we have at least some meaningful data beyond just the name
+                // Only process if we have at least some meaningful data beyond just the name
                 const hasData = contactFieldMappings.some(m => row[m.colIdx]?.trim())
-                if (hasData) {
-                  contactInserts.push(contact)
+                if (!hasData) continue
+
+                // DEDUPLICATION: cluster by phone, email, or name
+                const dedupeKey = String(contact.phone || contact.email || contact.name).toLowerCase().trim()
+                
+                if (contactMergeMap.has(dedupeKey)) {
+                  const existing = contactMergeMap.get(dedupeKey)!
+                  // Merge over missing fields
+                  for (const [k, v] of Object.entries(contact)) {
+                    if (v && existing[k] === undefined) {
+                      existing[k] = v
+                    }
+                  }
+                  // Pick the best name (prefer longer, non-placeholder names)
+                  if (String(contact.name).length > String(existing.name).length && String(contact.name).toLowerCase() !== "contact") {
+                    existing.name = contact.name
+                    if (contact.first_name) existing.first_name = contact.first_name
+                    if (contact.last_name) existing.last_name = contact.last_name
+                  }
+                } else {
+                  contactMergeMap.set(dedupeKey, contact)
                 }
               }
+
+              const contactInserts = Array.from(contactMergeMap.values()).map(c => ({
+                ...c,
+                lead_id: leadId
+              }))
 
               if (contactInserts.length > 0) {
                 const { error: contactErr } = await supabase.from("contacts").insert(contactInserts)
