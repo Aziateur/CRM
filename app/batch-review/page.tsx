@@ -36,7 +36,7 @@ type ReviewScope = "dm_reached" | "gatekeeper" | "all"
 export default function ReviewPage() {
   const projectId = useProjectId()
   const { attempts } = useAttempts()
-  const { leads } = useLeads()
+  const { leads } = useLeads({ withContacts: true })
   const createQuickReview = useCreateQuickReview()
   const createDeepReview = useCreateDeepReview()
   const setReviewBucket = useSetReviewBucket()

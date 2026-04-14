@@ -56,7 +56,7 @@ type ViewMode = "table" | "kanban"
 export default function LeadsPage() {
   const { toast } = useToast()
   const projectId = useProjectId()
-  const { leads, setLeads, loading: leadsLoading, refetch: refetchLeads } = useLeads()
+  const { leads, setLeads, loading: leadsLoading, refetch: refetchLeads } = useLeads({ withContacts: true })
   const { attempts, setAttempts, loading: attemptsLoading } = useAttempts()
   const { stages } = usePipelineStages()
   const { tasks, completeTask } = useTasks()
