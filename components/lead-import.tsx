@@ -450,7 +450,8 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
             if (!val) continue
             
             if (m.field.key === "contact_mobile" || m.field.key === "contact_work_phone") {
-              if (record.phone === undefined) record.phone = val
+              const digits = (val.match(/\d/g) || []).length
+              if (digits >= 5 && record.phone === undefined) record.phone = val
             }
             
             // Generate a likely custom field key (e.g. "contact_full_name" -> "full_name")
@@ -516,6 +517,13 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                 for (const m of contactFieldMappings) {
                   const val = row[m.colIdx]?.trim()
                   if (!val) continue
+                  
+                  // Validation: if it's mapped to a phone field, it must have at least 5 digits to reject alphabetical data shifts (e.g. "Llc")
+                  if (m.field.dbColumn.includes('phone') || m.field.key.includes('phone')) {
+                      const digits = (val.match(/\d/g) || []).length
+                      if (digits < 5) continue
+                  }
+                  
                   contact[m.field.dbColumn] = val
 
                   if (m.field.key === "contact_first_name") firstName = val
@@ -724,6 +732,12 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
               for (const m of contactFieldMappings) {
                 const val = row[m.colIdx]?.trim()
                 if (!val) continue
+                
+                if (m.field.dbColumn.includes('phone') || m.field.key.includes('phone')) {
+                    const digits = (val.match(/\d/g) || []).length
+                    if (digits < 5) continue
+                }
+                
                 contact[m.field.dbColumn] = val
                 if (m.field.key === "contact_first_name") firstName = val
                 if (m.field.key === "contact_last_name") lastName = val
