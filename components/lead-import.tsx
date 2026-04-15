@@ -538,9 +538,20 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                   contact.name = String(data[j].company || "Contact")
                 }
 
-                // Set primary phone: mobile → work → lead phone
+                // Intelligent routing of phone numbers so contacts have both direct and company lines
                 if (!contact.phone) {
                   contact.phone = contact.mobile_phone || contact.work_phone || data[j].phone || null
+                }
+                
+                // Inherit company phone as work_phone if the contact doesn't have one and it differs from their mobile/direct line
+                if (!contact.work_phone && data[j].phone) {
+                  const companyPhoneRaw = String(data[j].phone).replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                  const mobileRaw = String(contact.mobile_phone || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                  const directRaw = String(contact.phone || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                  
+                  if (companyPhoneRaw !== mobileRaw && companyPhoneRaw !== directRaw) {
+                    contact.work_phone = data[j].phone
+                  }
                 }
 
                 // Only process if we have at least some meaningful data beyond just the name
@@ -548,7 +559,13 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                 if (!hasData) continue
 
                 // DEDUPLICATION: cluster by phone, email, or name
-                const dedupeKey = String(contact.phone || contact.email || contact.name).toLowerCase().trim()
+                const getPhoneKey = (p?: unknown) => String(p || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                
+                let phoneKey = getPhoneKey(contact.phone) || getPhoneKey(contact.mobile_phone) || getPhoneKey(contact.work_phone) || getPhoneKey(data[j].phone)
+                let emailKey = String(contact.email || "").toLowerCase().trim()
+                
+                // If the only info we have is the company placeholder, its dedupe key is the company name.
+                const dedupeKey = phoneKey || emailKey || String(contact.name).toLowerCase().trim()
                 
                 if (contactMergeMap.has(dedupeKey)) {
                   const existing = contactMergeMap.get(dedupeKey)!
@@ -559,20 +576,35 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                     }
                   }
                   // Pick the best name (prefer longer, non-placeholder names)
-                  if (String(contact.name).length > String(existing.name).length && String(contact.name).toLowerCase() !== "contact") {
+                  const p1 = String(contact.name);
+                  const p2 = String(existing.name);
+                  const isPlaceholder1 = p1.toLowerCase() === String(data[j].company || "").toLowerCase()
+                  const isPlaceholder2 = p2.toLowerCase() === String(data[j].company || "").toLowerCase()
+                  
+                  if (!isPlaceholder1 && isPlaceholder2) {
+                    existing.name = contact.name // Override placeholder with real name
+                  } else if (!isPlaceholder1 && !isPlaceholder2 && p1.length > p2.length) {
                     existing.name = contact.name
-                    if (contact.first_name) existing.first_name = contact.first_name
-                    if (contact.last_name) existing.last_name = contact.last_name
                   }
+                  
+                  if (contact.first_name && !existing.first_name) existing.first_name = contact.first_name
+                  if (contact.last_name && !existing.last_name) existing.last_name = contact.last_name
                 } else {
                   contactMergeMap.set(dedupeKey, contact)
                 }
               }
 
-              const contactInserts = Array.from(contactMergeMap.values()).map(c => ({
+              let contactInserts = Array.from(contactMergeMap.values()).map(c => ({
                 ...c,
                 lead_id: leadId
               }))
+              
+              // Second pass filter: If we generated a generic placeholder contact (named after company) 
+              // BUT we successfully extracted real human contacts for this lead, discard the placeholder entirely!
+              const hasRealContacts = contactInserts.some(c => String(c.name).toLowerCase() !== String(data[j].company || "").toLowerCase())
+              if (hasRealContacts) {
+                 contactInserts = contactInserts.filter(c => String(c.name).toLowerCase() !== String(data[j].company || "").toLowerCase())
+              }
 
               if (contactInserts.length > 0) {
                 const { error: contactErr } = await supabase.from("contacts").insert(contactInserts)
@@ -706,8 +738,21 @@ export function LeadImport({ fieldDefinitions, onImported }: LeadImportProps) {
                 contact.name = data[j].company || "Contact"
               }
 
-              contact.phone = contact.mobile_phone || contact.work_phone || data[j].phone || null
-
+              // Intelligent routing of phone numbers so contacts have both direct and company lines
+              if (!contact.phone) {
+                contact.phone = contact.mobile_phone || contact.work_phone || data[j].phone || null
+              }
+              
+              // Inherit company phone as work_phone if the contact doesn't have one and it differs from their mobile/direct line
+              if (!contact.work_phone && data[j].phone) {
+                const companyPhoneRaw = String(data[j].phone).replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                const mobileRaw = String(contact.mobile_phone || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                const directRaw = String(contact.phone || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()
+                
+                if (companyPhoneRaw !== mobileRaw && companyPhoneRaw !== directRaw) {
+                  contact.work_phone = data[j].phone
+                }
+              }
               const hasData = contactFieldMappings.some(m => row[m.colIdx]?.trim())
               if (hasData) {
                 await supabase.from("contacts").insert([contact])
